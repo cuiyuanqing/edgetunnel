@@ -1,4 +1,4 @@
-﻿const Version = '2026-10-08 22:23:27';
+const Version = '2026-10-08 22:23:27';
 let config_JSON, 缓存SOCKS5白名单 = null, 调试日志打印 = false;
 let SOCKS5白名单 = ['*tapecontent.net', '*cloudatacdn.com', '*loadshare.org', '*cdn-centaurus.com', 'scholar.google.com'];
 const Pages静态页面 = 'https://edt-pages.github.io', EDT_版本号 = Number(String(Version).replace(/\D+/g, ''));
@@ -27,7 +27,13 @@ export default {
 		const url = new URL(请求URL文本);
 		const UA = request.headers.get('User-Agent') || 'null';
 		const upgradeHeader = (request.headers.get('Upgrade') || '').toLowerCase(), contentType = (request.headers.get('content-type') || '').toLowerCase();
-		const 管理员密码 = env.ADMIN || env.admin || env.PASSWORD || env.password || env.pswd || env.TOKEN || env.KEY || env.UUID || env.uuid;
+		const isLocal = ['localhost', '127.0.0.1', '0.0.0.0', '::1', '[::1]'].includes(url.hostname)
+			|| url.hostname.endsWith('.local')
+			|| url.hostname.endsWith('.internal')
+			|| /^192\.168\./.test(url.hostname)
+			|| /^10\./.test(url.hostname)
+			|| /^172\.(1[6-9]|2\d|3[01])\./.test(url.hostname);
+		let 管理员密码 = env.ADMIN || env.admin || env.PASSWORD || env.password || env.pswd || env.TOKEN || env.KEY || env.UUID || env.uuid || (isLocal ? '123456' : undefined);
 		const 加密秘钥 = env.KEY || '勿动此默认密钥，有需求请自行通过添加变量KEY进行修改';
 		const userIDMD5 = await MD5MD5(管理员密码 + 加密秘钥);
 		const uuidRegex = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/;
@@ -41,7 +47,7 @@ export default {
 		反代并发拨号数 = Math.max(1, Number(env.PROXY_CONCURRENT_DIAL) || 反代并发拨号数);
 		TCP并发拨号数 = Math.max(1, Number(env.TCP_CONCURRENT_DIAL) || TCP并发拨号数);
 		if (!env.TCP_CONCURRENT_DIAL && TCP并发拨号数 !== 1 && 识别运营商(request) === 'cmcc') TCP并发拨号数 = 1;
-		let 默认反代IP = (`${request.cf.colo}.${特征码字典[0]}.${特征码字典[1]}SsSs.nEt`).toLowerCase(), 默认反代兜底 = true;
+		let 默认反代IP = (`${request.cf?.colo || 'sjc'}.${特征码字典[0]}.${特征码字典[1]}SsSs.nEt`).toLowerCase(), 默认反代兜底 = true;
 		if (env.PROXYIP) {
 			const proxyIPs = await 整理成数组(env.PROXYIP);
 			默认反代IP = proxyIPs[Math.floor(Math.random() * proxyIPs.length)];
@@ -80,7 +86,51 @@ export default {
 			log(`[叉HTTP] 命中请求: ${url.pathname}${url.search}`);
 			return await 处理叉HTTP请求(request, userID, 反代上下文);
 		} else {
-			if (url.protocol === 'http:') return Response.redirect(url.href.replace(`http://${url.hostname}`, `https://${url.hostname}`), 301);
+			if (url.protocol === 'http:' && !isLocal) return Response.redirect(url.href.replace(`http://${url.hostname}`, `https://${url.hostname}`), 301);
+			if (!env.KV || typeof env.KV.get !== 'function') {
+				if (env.kv && typeof env.kv.get === 'function') {
+					env.KV = env.kv;
+				} else {
+					for (const k of Object.keys(env || {})) {
+						if (env[k] && typeof env[k].get === 'function' && typeof env[k].put === 'function') {
+							env.KV = env[k];
+							break;
+						}
+					}
+				}
+				if (!env.KV || typeof env.KV.get !== 'function') {
+					const memoryKV = globalThis.__memoryKV || (globalThis.__memoryKV = new Map());
+					env.KV = {
+						async get(key) { return memoryKV.has(key) ? memoryKV.get(key) : null; },
+						async put(key, value) { memoryKV.set(key, typeof value === 'string' ? value : String(value)); },
+						async delete(key) { memoryKV.delete(key); }
+					};
+				}
+			}
+			if (访问路径 === 'login') {//处理登录页面和登录请求
+				if (!管理员密码) return fetch(Pages静态页面 + '/noADMIN').then(r => { const headers = new Headers(r.headers); headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate'); headers.set('Pragma', 'no-cache'); headers.set('Expires', '0'); return new Response(r.body, { status: 404, statusText: r.statusText, headers }) });
+				const cookies = request.headers.get('Cookie') || '';
+				const authCookie = cookies.split(';').find(c => c.trim().startsWith('auth='))?.split('=')[1];
+				if (authCookie == await MD5MD5(UA + 加密秘钥 + 管理员密码)) return new Response('重定向中...', { status: 302, headers: { 'Location': '/admin' } });
+				if (request.method === 'POST') {
+					const formData = await request.text();
+					const params = new URLSearchParams(formData);
+					const 输入密码 = params.get('password');
+					if (输入密码 === (typeof 管理员密码 === 'string' ? 管理员密码.replace(/[\r\n]/g, '') : 管理员密码)) {
+						// 密码正确，设置cookie并返回成功标记
+						const 响应 = new Response(JSON.stringify({ success: true }), { status: 200, headers: { 'Content-Type': 'application/json;charset=utf-8' } });
+						响应.headers.set('Set-Cookie', `auth=${await MD5MD5(UA + 加密秘钥 + 管理员密码)}; Path=/; Max-Age=86400; HttpOnly; ${isLocal ? '' : 'Secure; '}SameSite=Lax`);
+						return 响应;
+					}
+				}
+				try {
+					const res = await fetch(Pages静态页面 + '/login/');
+					if (res.ok) return res;
+					return fetch(Pages静态页面 + '/login');
+				} catch (e) {
+					return fetch(Pages静态页面 + '/login');
+				}
+			}
 			if (!管理员密码) return fetch(Pages静态页面 + '/noADMIN').then(r => { const headers = new Headers(r.headers); headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate'); headers.set('Pragma', 'no-cache'); headers.set('Expires', '0'); return new Response(r.body, { status: 404, statusText: r.statusText, headers }) });
 			if (env.KV && typeof env.KV.get === 'function') {
 				const 区分大小写访问路径 = url.pathname.slice(1);
@@ -88,22 +138,6 @@ export default {
 					const params = new URLSearchParams(url.search);
 					params.set('token', await MD5MD5(host + userID));
 					return new Response('重定向中...', { status: 302, headers: { 'Location': `/sub?${params.toString()}` } });
-				} else if (访问路径 === 'login') {//处理登录页面和登录请求
-					const cookies = request.headers.get('Cookie') || '';
-					const authCookie = cookies.split(';').find(c => c.trim().startsWith('auth='))?.split('=')[1];
-					if (authCookie == await MD5MD5(UA + 加密秘钥 + 管理员密码)) return new Response('重定向中...', { status: 302, headers: { 'Location': '/admin' } });
-					if (request.method === 'POST') {
-						const formData = await request.text();
-						const params = new URLSearchParams(formData);
-						const 输入密码 = params.get('password');
-						if (输入密码 === (typeof 管理员密码 === 'string' ? 管理员密码.replace(/[\r\n]/g, '') : 管理员密码)) {
-							// 密码正确，设置cookie并返回成功标记
-							const 响应 = new Response(JSON.stringify({ success: true }), { status: 200, headers: { 'Content-Type': 'application/json;charset=utf-8' } });
-							响应.headers.set('Set-Cookie', `auth=${await MD5MD5(UA + 加密秘钥 + 管理员密码)}; Path=/; Max-Age=86400; HttpOnly; Secure; SameSite=Lax`);
-							return 响应;
-						}
-					}
-					return fetch(Pages静态页面 + '/login');
 				} else if (访问路径 === 'admin' || 访问路径.startsWith('admin/')) {//验证cookie后响应管理页面
 					const cookies = request.headers.get('Cookie') || '';
 					const authCookie = cookies.split(';').find(c => c.trim().startsWith('auth='))?.split('=')[1];
@@ -290,13 +324,30 @@ export default {
 					} else if (区分大小写访问路径 === 'admin/ADD.txt') {// 处理 admin/ADD.txt 请求，返回本地优选IP
 						let 本地优选IP = await env.KV.get('ADD.txt') || 'null';
 						if (本地优选IP == 'null') 本地优选IP = (await 生成随机IP(request, config_JSON.优选订阅生成.本地IP库.随机数量, config_JSON.优选订阅生成.本地IP库.指定端口))[1];
-						return new Response(本地优选IP, { status: 200, headers: { 'Content-Type': 'text/plain;charset=utf-8', 'asn': request.cf.asn } });
+						return new Response(本地优选IP, { status: 200, headers: { 'Content-Type': 'text/plain;charset=utf-8', 'asn': request.cf?.asn || '' } });
 					} else if (访问路径 === 'admin/cf.json') {// CF配置文件
-						return new Response(JSON.stringify(request.cf, null, 2), { status: 200, headers: { 'Content-Type': 'application/json;charset=utf-8' } });
+						return new Response(JSON.stringify(request.cf || {}, null, 2), { status: 200, headers: { 'Content-Type': 'application/json;charset=utf-8' } });
 					}
 
 					ctx.waitUntil(请求日志记录(env, request, 访问IP, 'Admin_Login', config_JSON));
-					return fetch(Pages静态页面 + '/admin' + url.search);
+					try {
+						const adminRes = await fetch(Pages静态页面 + '/admin/' + url.search);
+						if (adminRes.ok) {
+							let html = await adminRes.text();
+							html = 增强管理后台HTML(html);
+							const headers = new Headers(adminRes.headers);
+							headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+							headers.set('Pragma', 'no-cache');
+							headers.set('Expires', '0');
+							headers.set('Content-Type', 'text/html; charset=utf-8');
+							headers.delete('content-encoding');
+							headers.delete('content-length');
+							return new Response(html, { status: adminRes.status, headers });
+						}
+					} catch (e) {
+						console.error('获取管理后台页面失败:', e);
+					}
+					return new Response('管理后台页面加载异常，请检查网络连接', { status: 502, headers: { 'Content-Type': 'text/plain;charset=utf-8' } });
 				} else if (访问路径 === 'logout' || uuidRegex.test(访问路径)) {//清除cookie并跳转到登录页面
 					const 响应 = new Response('重定向中...', { status: 302, headers: { 'Location': '/login' } });
 					响应.headers.set('Set-Cookie', 'auth=; Path=/; Max-Age=0; HttpOnly');
@@ -525,7 +576,7 @@ export default {
 			}
 			return 反代响应;
 		} catch (error) { }
-		return new Response(await nginx(), { status: 200, headers: { 'Content-Type': 'text/html; charset=UTF-8' } });
+		return new Response(await nginx(), { status: 200, headers: { 'Content-Type': 'text/html; charset=UTF-8', 'Cache-Control': 'no-store, no-cache, must-revalidate' } });
 	}
 };
 ///////////////////////////////////////////////////////////////////////叉HTTP传输数据///////////////////////////////////////////////
@@ -5337,7 +5388,7 @@ function Surge订阅配置文件热补丁(content, url, config_JSON) {
 async function 请求日志记录(env, request, 访问IP, 请求类型 = "Get_SUB", config_JSON, 是否写入KV日志 = true) {
 	try {
 		const 当前时间 = new Date();
-		const 日志内容 = { TYPE: 请求类型, IP: 访问IP, ASN: `AS${request.cf.asn || '0'} ${request.cf.asOrganization || 'Unknown'}`, CC: `${request.cf.country || 'N/A'} ${request.cf.city || 'N/A'}`, URL: request.url, UA: request.headers.get('User-Agent') || 'Unknown', TIME: 当前时间.getTime() };
+		const 日志内容 = { TYPE: 请求类型, IP: 访问IP, ASN: `AS${request.cf?.asn || '0'} ${request.cf?.asOrganization || 'Unknown'}`, CC: `${request.cf?.country || 'N/A'} ${request.cf?.city || 'N/A'}`, URL: request.url, UA: request.headers.get('User-Agent') || 'Unknown', TIME: 当前时间.getTime() };
 		if (config_JSON.TG.启用) {
 			try {
 				const TG_TXT = await env.KV.get('tg.json');
@@ -5916,55 +5967,291 @@ async function 整理成数组(内容) {
 	return 地址数组;
 }
 
-async function 获取优选订阅生成器数据(优选订阅生成器HOST, uid = "000000") {
-	let 优选IP = [], 其他节点LINK = '', 格式化HOST = 优选订阅生成器HOST.replace(/^sub:\/\//i, 'https://').split('#')[0].split('?')[0];
+function 增强管理后台HTML(html) {
+	if (!html || typeof html !== 'string') return html;
+	const targetSection = '<div id="generatorSection" class="form-group hidden-section">';
+	const idx = html.indexOf(targetSection);
+	if (idx === -1) return html;
+	const endIdx = html.indexOf('</div>', idx + targetSection.length);
+	if (endIdx === -1) return html;
+
+	const replacement = `<div id="generatorSection" class="form-group hidden-section">
+						<div class="label-with-hint" style="justify-content: space-between; align-items: center; margin-bottom: 12px; display: flex;">
+							<div style="display: flex; align-items: center; gap: 8px;">
+								<label for="generatorURL" style="margin: 0; font-weight: 600;">优选订阅生成器列表</label>
+								<span style="font-size: 11px; color: #10b981; background: rgba(16, 185, 129, 0.12); padding: 2px 8px; border-radius: 12px; font-weight: 600;">多源并发容灾</span>
+							</div>
+							<button type="button" class="btn btn-primary" id="addGeneratorBtn" onclick="window.addGeneratorRow()" style="padding: 6px 14px; font-size: 13px; border-radius: 8px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;">
+								<span style="font-size: 15px; font-weight: bold; line-height: 1;">+</span> 添加生成器
+							</button>
+						</div>
+						<div id="generatorListContainer" style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 8px;">
+							<!-- 动态行 -->
+						</div>
+						<input type="hidden" id="generatorURL" title="优选订阅生成器" placeholder="sub.cmliussss.net">
+						<div style="font-size: 12px; color: #6b7280; line-height: 1.6; margin-top: 6px;">
+							💡 提示：支持添加多个优选生成器域名（例如 <code>sub.bbc.xx.kg</code>、<code>sub.mot.cloudns.biz</code>）。系统将多源并发请求并自动去重；若个别生成器失效或超时（4秒），不会影响其他生成器正常使用。
+						</div>
+					</div>
+
+					<script>
+					(function() {
+						function extractCleanHost(val) {
+							if (!val) return '';
+							let s = String(val).trim();
+							s = s.replace(/^https?:\\/\\//i, '').replace(/^sub:\\/\\//i, '');
+							s = s.split('#')[0].split('?')[0].split('/')[0].trim();
+							return s;
+						}
+
+						window.createGeneratorRowElement = function(initialVal) {
+							const container = document.getElementById('generatorListContainer');
+							if (!container) return;
+							const row = document.createElement('div');
+							row.className = 'generator-row-item';
+							row.style.cssText = 'display: flex; gap: 10px; align-items: center; width: 100%;';
+							
+							const inputWrapper = document.createElement('div');
+							inputWrapper.style.cssText = 'flex: 1; width: 100%;';
+							
+							const input = document.createElement('input');
+							input.type = 'text';
+							input.className = 'generator-item-input';
+							input.value = initialVal || '';
+							input.placeholder = '例如: sub.bbc.xx.kg 或 sub.mot.cloudns.biz';
+							input.style.cssText = 'padding: 12px 14px; border-radius: 10px; font-size: 14px; width: 100%;';
+							input.oninput = window.syncGeneratorValueFromInputs;
+							input.onchange = window.syncGeneratorValueFromInputs;
+							inputWrapper.appendChild(input);
+
+							const delBtn = document.createElement('button');
+							delBtn.type = 'button';
+							delBtn.className = 'btn btn-secondary btn-del-gen';
+							delBtn.style.cssText = 'padding: 10px 14px; font-size: 13px; border-radius: 10px; color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.3); background: rgba(239, 68, 68, 0.05); cursor: pointer; flex-shrink: 0;';
+							delBtn.innerHTML = '✕ 删除';
+							delBtn.title = '删除此生成器';
+							delBtn.onclick = function() { window.removeGeneratorRow(delBtn); };
+
+							row.appendChild(inputWrapper);
+							row.appendChild(delBtn);
+							container.appendChild(row);
+						};
+
+						window.syncGeneratorRowsFromValue = function(rawVal) {
+							const container = document.getElementById('generatorListContainer');
+							if (!container) return;
+							let list = [];
+							if (Array.isArray(rawVal)) {
+								list = rawVal.map(extractCleanHost).filter(Boolean);
+							} else if (typeof rawVal === 'string' && rawVal.trim()) {
+								list = rawVal.split(/[\\r\\n,;]+/).map(extractCleanHost).filter(Boolean);
+							}
+							container.innerHTML = '';
+							if (list.length === 0) list = [''];
+							list.forEach(function(host) {
+								window.createGeneratorRowElement(host);
+							});
+						};
+
+						window.addGeneratorRow = function() {
+							window.createGeneratorRowElement('');
+							const inputs = document.querySelectorAll('.generator-item-input');
+							if (inputs.length > 0) inputs[inputs.length - 1].focus();
+							window.syncGeneratorValueFromInputs();
+						};
+
+						window.removeGeneratorRow = function(btn) {
+							const row = btn.closest('.generator-row-item');
+							if (row) row.remove();
+							const container = document.getElementById('generatorListContainer');
+							if (container && container.querySelectorAll('.generator-row-item').length === 0) {
+								window.createGeneratorRowElement('');
+							}
+							window.syncGeneratorValueFromInputs();
+						};
+
+						window.syncGeneratorValueFromInputs = function() {
+							const hiddenInput = document.getElementById('generatorURL');
+							if (!hiddenInput) return;
+							const inputs = document.querySelectorAll('.generator-item-input');
+							const hosts = [];
+							inputs.forEach(function(input) {
+								const clean = extractCleanHost(input.value);
+								if (clean) hosts.push(clean);
+							});
+							const joined = hosts.join(',');
+
+							const proto = Object.getPrototypeOf(hiddenInput);
+							const nativeDesc = Object.getOwnPropertyDescriptor(proto, 'value');
+							if (nativeDesc && nativeDesc.set) {
+								nativeDesc.set.call(hiddenInput, joined);
+							} else {
+								hiddenInput.value = joined;
+							}
+
+							if (typeof markModified === 'function') {
+								markModified('sub');
+							}
+						};
+
+						function initGeneratorHook() {
+							const hiddenInput = document.getElementById('generatorURL');
+							if (!hiddenInput) return setTimeout(initGeneratorHook, 50);
+							const proto = Object.getPrototypeOf(hiddenInput);
+							const nativeDesc = Object.getOwnPropertyDescriptor(proto, 'value');
+							Object.defineProperty(hiddenInput, 'value', {
+								get: function() {
+									if (nativeDesc && nativeDesc.get) return nativeDesc.get.call(hiddenInput);
+									return this.getAttribute('value') || '';
+								},
+								set: function(newVal) {
+									if (nativeDesc && nativeDesc.set) nativeDesc.set.call(hiddenInput, newVal);
+									else this.setAttribute('value', newVal);
+									window.syncGeneratorRowsFromValue(newVal);
+								}
+							});
+							window.processGeneratorURL = function() { window.syncGeneratorValueFromInputs(); };
+							if (hiddenInput.value) {
+								window.syncGeneratorRowsFromValue(hiddenInput.value);
+							} else {
+								window.syncGeneratorRowsFromValue('');
+							}
+						}
+
+						if (document.readyState === 'loading') {
+							document.addEventListener('DOMContentLoaded', initGeneratorHook);
+						} else {
+							initGeneratorHook();
+						}
+					})();
+					</script>`;
+
+	return html.substring(0, idx) + replacement + html.substring(endIdx + 6);
+}
+
+async function 获取单个优选订阅生成器数据(hostItem, uid = "000000") {
+	let 优选IP = [], 其他节点LINK = '', 格式化HOST = hostItem.replace(/^sub:\/\//i, 'https://').split('#')[0].split('?')[0].trim();
+	if (!格式化HOST) return [优选IP, 其他节点LINK, null];
 	if (!/^https?:\/\//i.test(格式化HOST)) 格式化HOST = `https://${格式化HOST}`;
 
 	try {
 		const url = new URL(格式化HOST);
 		格式化HOST = url.origin;
 	} catch (error) {
-		优选IP.push(`127.0.0.1:1234#${优选订阅生成器HOST}优选订阅生成器格式化异常:${error.message}`);
-		return [优选IP, 其他节点LINK];
+		console.warn(`[优选订阅生成器] ${hostItem} 格式化异常:`, error.message);
+		return [优选IP, 其他节点LINK, `${hostItem} 格式化异常: ${error.message}`];
 	}
 
 	const 优选订阅生成器URL = `${格式化HOST}/sub?host=example.com&uuid=00000000-0000-4000-8000-000000000000`;
 
 	try {
+		const controller = new AbortController();
+		const timeoutId = setTimeout(() => controller.abort(), 4000);
 		const response = await fetch(优选订阅生成器URL, {
-			headers: { 'User-Agent': 汇聚订阅_UA + ' Uid/0x' + uid + ' Version/' + EDT_版本号 }
+			headers: { 'User-Agent': 汇聚订阅_UA + ' Uid/0x' + uid + ' Version/' + EDT_版本号 },
+			signal: controller.signal
 		});
+		clearTimeout(timeoutId);
 
 		if (!response.ok) {
-			优选IP.push(`127.0.0.1:1234#${优选订阅生成器HOST}优选订阅生成器异常:${response.statusText}`);
-			return [优选IP, 其他节点LINK];
+			console.warn(`[优选订阅生成器] ${hostItem} 响应状态码: ${response.status}`);
+			return [优选IP, 其他节点LINK, `${hostItem} 响应状态码: ${response.status}`];
 		}
 
-		const 优选订阅生成器返回订阅内容 = atob(await response.text());
+		const rawText = await response.text();
+		const contentType = response.headers.get('content-type') || '';
+		if (contentType.includes('text/html') || rawText.trim().startsWith('<') || rawText.trim().toLowerCase().startsWith('<!doctype')) {
+			console.warn(`[优选订阅生成器] ${hostItem} 返回网页内容而非有效订阅节点`);
+			return [优选IP, 其他节点LINK, `${hostItem} 返回HTML页面`];
+		}
+
+		let 优选订阅生成器返回订阅内容 = '';
+		try {
+			优选订阅生成器返回订阅内容 = atob(rawText.trim());
+		} catch (b64Err) {
+			优选订阅生成器返回订阅内容 = rawText;
+		}
+
+		if (优选订阅生成器返回订阅内容.trim().startsWith('<') || 优选订阅生成器返回订阅内容.trim().toLowerCase().startsWith('<!doctype')) {
+			console.warn(`[优选订阅生成器] ${hostItem} 解码后为网页内容而非有效订阅节点`);
+			return [优选IP, 其他节点LINK, `${hostItem} 返回HTML页面`];
+		}
+
 		const 订阅行列表 = 优选订阅生成器返回订阅内容.includes('\r\n')
 			? 优选订阅生成器返回订阅内容.split('\r\n')
 			: 优选订阅生成器返回订阅内容.split('\n');
 
 		for (const 行内容 of 订阅行列表) {
-			if (!行内容.trim()) continue; // 跳过空行
-			if (行内容.includes('00000000-0000-4000-8000-000000000000') && 行内容.includes('example.com')) {
-				// 这是优选IP行，提取 域名:端口#备注
-				const 地址匹配 = 行内容.match(/:\/\/[^@]+@([^?]+)/);
+			const line = 行内容.trim();
+			if (!line || line.startsWith('<')) continue;
+			if (line.includes('00000000-0000-4000-8000-000000000000') && line.includes('example.com')) {
+				const 地址匹配 = line.match(/:\/\/[^@]+@([^?]+)/);
 				if (地址匹配) {
-					let 地址端口 = 地址匹配[1], 备注 = ''; // 域名:端口 或 IP:端口
-					const 备注匹配 = 行内容.match(/#(.+)$/);
-					if (备注匹配) 备注 = '#' + decodeURIComponent(备注匹配[1]);
+					let 地址端口 = 地址匹配[1], 备注 = '';
+					const 备注匹配 = line.match(/#(.+)$/);
+					if (备注匹配) {
+						try {
+							备注 = '#' + decodeURIComponent(备注匹配[1]);
+						} catch (e) {
+							备注 = '#' + 备注匹配[1];
+						}
+					}
 					优选IP.push(地址端口 + 备注);
 				}
-			} else {
-				其他节点LINK += 行内容 + '\n';
+			} else if (/^[a-zA-Z0-9+.-]+:\/\//.test(line)) {
+				其他节点LINK += line + '\n';
 			}
 		}
+		return [优选IP, 其他节点LINK, null];
 	} catch (error) {
-		优选IP.push(`127.0.0.1:1234#${优选订阅生成器HOST}优选订阅生成器异常:${error.message}`);
+		const isTimeout = error.name === 'AbortError' || /timeout|abort/i.test(error.message);
+		console.warn(`[优选订阅生成器] ${hostItem} 异常:`, isTimeout ? '请求超时(4s)' : error.message);
+		return [优选IP, 其他节点LINK, `${hostItem} 异常: ${isTimeout ? '请求超时(4s)' : error.message}`];
+	}
+}
+
+async function 获取优选订阅生成器数据(优选订阅生成器HOST, uid = "000000") {
+	if (!优选订阅生成器HOST) return [[], ''];
+
+	let hostList = [];
+	if (Array.isArray(优选订阅生成器HOST)) {
+		hostList = 优选订阅生成器HOST;
+	} else if (typeof 优选订阅生成器HOST === 'string') {
+		hostList = 优选订阅生成器HOST.split(/[\r\n,;]+/).map(h => h.trim()).filter(Boolean);
 	}
 
-	return [优选IP, 其他节点LINK];
+	hostList = [...new Set(hostList.map(h => h.trim()).filter(Boolean))];
+	if (hostList.length === 0) return [[], ''];
+
+	const results = await Promise.allSettled(hostList.map(h => 获取单个优选订阅生成器数据(h, uid)));
+
+	const 所有优选IPSet = new Set();
+	const 所有其他节点Set = new Set();
+	const 错误列表 = [];
+
+	for (let i = 0; i < results.length; i++) {
+		const res = results[i];
+		const host = hostList[i];
+		if (res.status === 'fulfilled') {
+			const [ips, otherLinks, errMsg] = res.value;
+			if (errMsg) 错误列表.push(errMsg);
+			ips.forEach(ip => 所有优选IPSet.add(ip));
+			if (otherLinks) {
+				otherLinks.split(/[\r\n]+/).map(l => l.trim()).filter(Boolean).forEach(l => 所有其他节点Set.add(l));
+			}
+		} else {
+			错误列表.push(`${host} 异常: ${res.reason?.message}`);
+		}
+	}
+
+	const 最终优选IP = Array.from(所有优选IPSet);
+	let 最终其他节点 = Array.from(所有其他节点Set).length > 0 ? Array.from(所有其他节点Set).join('\n') + '\n' : '';
+
+	if (最终优选IP.length === 0 && !最终其他节点 && 错误列表.length > 0) {
+		最终优选IP.push(`127.0.0.1:1234#优选生成器全部拉取失败:${错误列表[0]}`);
+	}
+
+	return [最终优选IP, 最终其他节点];
 }
 
 async function 请求优选API(urls, 默认端口 = '443', uid = "000000", 超时时间 = 3000) {
