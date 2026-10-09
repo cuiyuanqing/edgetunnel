@@ -1,5 +1,6 @@
 const Version = '2026-10-08 22:23:27';
 let config_JSON, 缓存SOCKS5白名单 = null, 调试日志打印 = false;
+let 缓存管理后台HTML = null, 缓存管理后台HTML时间 = 0;
 let SOCKS5白名单 = ['*tapecontent.net', '*cloudatacdn.com', '*loadshare.org', '*cdn-centaurus.com', 'scholar.google.com'];
 const Pages静态页面 = 'https://edt-pages.github.io', EDT_版本号 = Number(String(Version).replace(/\D+/g, ''));
 ///////////////////////////////////////////////////////全局常量和工具函数///////////////////////////////////////////////
@@ -124,9 +125,20 @@ export default {
 					}
 				}
 				try {
-					const res = await fetch(Pages静态页面 + '/login/');
-					if (res.ok) return res;
-					return fetch(Pages静态页面 + '/login');
+					let res = await fetch(Pages静态页面 + '/login/');
+					if (!res.ok) res = await fetch(Pages静态页面 + '/login');
+					if (res.ok) {
+						let loginHtml = await res.text();
+						loginHtml = loginHtml
+							.replace(/(<input[^>]*id=["']password["'][^>]*)disabled/gi, '$1')
+							.replace(/(<button[^>]*id=["']loginBtn["'][^>]*)disabled/gi, '$1');
+						const headers = new Headers(res.headers);
+						headers.set('Content-Type', 'text/html; charset=utf-8');
+						headers.set('Cache-Control', 'no-store, no-cache, must-revalidate');
+						headers.delete('content-length');
+						return new Response(loginHtml, { status: res.status, headers });
+					}
+					return res;
 				} catch (e) {
 					return fetch(Pages静态页面 + '/login');
 				}
@@ -327,14 +339,79 @@ export default {
 						return new Response(本地优选IP, { status: 200, headers: { 'Content-Type': 'text/plain;charset=utf-8', 'asn': request.cf?.asn || '' } });
 					} else if (访问路径 === 'admin/cf.json') {// CF配置文件
 						return new Response(JSON.stringify(request.cf || {}, null, 2), { status: 200, headers: { 'Content-Type': 'application/json;charset=utf-8' } });
+					} else if (访问路径 === 'admin/test-generator') {// 测试单个优选订阅生成器质量与延迟
+						const targetHost = url.searchParams.get('host') || '';
+						if (!targetHost) {
+							return new Response(JSON.stringify({ ok: false, error: '缺少 host 参数' }), {
+								status: 400,
+								headers: { 'Content-Type': 'application/json;charset=utf-8' }
+							});
+						}
+						const startTime = Date.now();
+						try {
+							const [ips, otherLinks, errMsg] = await 获取单个优选订阅生成器数据(targetHost, "000000");
+							const latency = Date.now() - startTime;
+							const nodeCount = (ips?.length || 0) + (otherLinks ? otherLinks.trim().split('\n').filter(Boolean).length : 0);
+							if (errMsg) {
+								return new Response(JSON.stringify({
+									host: targetHost,
+									ok: false,
+									latency,
+									nodeCount,
+									quality: 'bad',
+									error: errMsg
+								}), {
+									status: 200,
+									headers: { 'Content-Type': 'application/json;charset=utf-8' }
+								});
+							}
+							let quality = 'good';
+							if (latency > 2000) quality = 'slow';
+							else if (latency > 800) quality = 'medium';
+
+							return new Response(JSON.stringify({
+								host: targetHost,
+								ok: true,
+								latency,
+								nodeCount,
+								quality,
+								error: null
+							}), {
+								status: 200,
+								headers: { 'Content-Type': 'application/json;charset=utf-8' }
+							});
+						} catch (testErr) {
+							const latency = Date.now() - startTime;
+							return new Response(JSON.stringify({
+								host: targetHost,
+								ok: false,
+								latency,
+								nodeCount: 0,
+								quality: 'bad',
+								error: testErr.message || '检测异常'
+							}), {
+								status: 200,
+								headers: { 'Content-Type': 'application/json;charset=utf-8' }
+							});
+						}
 					}
 
 					ctx.waitUntil(请求日志记录(env, request, 访问IP, 'Admin_Login', config_JSON));
 					try {
+						if (缓存管理后台HTML && (Date.now() - 缓存管理后台HTML时间 < 600000)) {
+							const headers = new Headers();
+							headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+							headers.set('Pragma', 'no-cache');
+							headers.set('Expires', '0');
+							headers.set('Content-Type', 'text/html; charset=utf-8');
+							return new Response(缓存管理后台HTML, { status: 200, headers });
+						}
 						const adminRes = await fetch(Pages静态页面 + '/admin/' + url.search);
 						if (adminRes.ok) {
 							let html = await adminRes.text();
 							html = 增强管理后台HTML(html);
+							缓存管理后台HTML = html;
+							缓存管理后台HTML时间 = Date.now();
 							const headers = new Headers(adminRes.headers);
 							headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
 							headers.set('Pragma', 'no-cache');
@@ -5976,64 +6053,439 @@ function 增强管理后台HTML(html) {
 	if (endIdx === -1) return html;
 
 	const replacement = `<div id="generatorSection" class="form-group hidden-section">
-						<div class="label-with-hint" style="justify-content: space-between; align-items: center; margin-bottom: 12px; display: flex;">
+						<style>
+							@keyframes genSpin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+							.gen-spin { display: inline-block; animation: genSpin 1s linear infinite; }
+							.generator-row-item {
+								display: flex;
+								gap: 10px;
+								align-items: center;
+								width: 100%;
+								padding: 10px 12px;
+								border: 1px solid rgba(156, 163, 175, 0.25);
+								border-radius: 12px;
+								background: rgba(255, 255, 255, 0.03);
+								transition: all 0.25s ease;
+								box-sizing: border-box;
+							}
+							.generator-row-item:hover {
+								border-color: rgba(59, 130, 246, 0.4);
+							}
+							.generator-row-item.is-disabled {
+								opacity: 0.55;
+								background: rgba(0, 0, 0, 0.15);
+								border-color: rgba(156, 163, 175, 0.15);
+							}
+							.generator-row-item.is-disabled:hover {
+								opacity: 0.85;
+							}
+							.generator-drag-handle {
+								font-size: 18px;
+								color: #9ca3af;
+								cursor: grab;
+								user-select: none;
+								padding: 4px 6px;
+								border-radius: 6px;
+								display: inline-flex;
+								align-items: center;
+								justify-content: center;
+								background: rgba(156, 163, 175, 0.08);
+								transition: all 0.2s;
+							}
+							.generator-drag-handle:hover {
+								color: #3b82f6;
+								background: rgba(59, 130, 246, 0.15);
+							}
+							.generator-drag-handle:active {
+								cursor: grabbing;
+							}
+							.btn-gen-move {
+								border: none;
+								background: rgba(156, 163, 175, 0.1);
+								color: #9ca3af;
+								font-size: 10px;
+								cursor: pointer;
+								padding: 2px 5px;
+								border-radius: 4px;
+								line-height: 1;
+								transition: all 0.15s;
+							}
+							.btn-gen-move:hover {
+								background: rgba(59, 130, 246, 0.2);
+								color: #3b82f6;
+							}
+
+							/* Toggle Switch 样式 */
+							.gen-switch-container {
+								display: inline-flex;
+								align-items: center;
+								cursor: pointer;
+								user-select: none;
+								position: relative;
+								padding: 4px 6px;
+								border-radius: 8px;
+								background: rgba(156, 163, 175, 0.08);
+								transition: background-color 0.2s;
+								gap: 6px;
+							}
+							.gen-switch-container:hover {
+								background: rgba(156, 163, 175, 0.16);
+							}
+							.gen-switch-input {
+								position: absolute;
+								opacity: 0;
+								width: 0;
+								height: 0;
+								pointer-events: none;
+								margin: 0;
+							}
+							.gen-switch-track {
+								width: 34px;
+								height: 18px;
+								background-color: #6b7280;
+								border-radius: 9999px;
+								transition: background-color 0.25s ease;
+								position: relative;
+								display: inline-block;
+								vertical-align: middle;
+							}
+							.gen-switch-thumb {
+								position: absolute;
+								top: 2px;
+								left: 2px;
+								width: 14px;
+								height: 14px;
+								background-color: #ffffff;
+								border-radius: 50%;
+								transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+								box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+							}
+							.gen-switch-input:checked + .gen-switch-track {
+								background-color: #10b981;
+							}
+							.gen-switch-input:checked + .gen-switch-track .gen-switch-thumb {
+								transform: translateX(16px);
+							}
+						</style>
+						<div class="label-with-hint" style="justify-content: space-between; align-items: center; margin-bottom: 12px; display: flex; flex-wrap: wrap; gap: 8px;">
 							<div style="display: flex; align-items: center; gap: 8px;">
 								<label for="generatorURL" style="margin: 0; font-weight: 600;">优选订阅生成器列表</label>
-								<span style="font-size: 11px; color: #10b981; background: rgba(16, 185, 129, 0.12); padding: 2px 8px; border-radius: 12px; font-weight: 600;">多源并发容灾</span>
+								<span style="font-size: 11px; color: #10b981; background: rgba(16, 185, 129, 0.12); padding: 2px 8px; border-radius: 12px; font-weight: 600;">多源容灾 · 拖动排序 · 独立启停</span>
 							</div>
-							<button type="button" class="btn btn-primary" id="addGeneratorBtn" onclick="window.addGeneratorRow()" style="padding: 6px 14px; font-size: 13px; border-radius: 8px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;">
-								<span style="font-size: 15px; font-weight: bold; line-height: 1;">+</span> 添加生成器
-							</button>
+							<div style="display: flex; align-items: center; gap: 8px;">
+								<button type="button" class="btn btn-secondary" id="testAllGeneratorsBtn" onclick="window.testAllGenerators()" style="padding: 6px 12px; font-size: 13px; border-radius: 8px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;">
+									<span id="testAllIcon" style="font-size: 14px;">⚡</span> <span id="testAllText">一键检测全部</span>
+								</button>
+								<button type="button" class="btn btn-primary" id="addGeneratorBtn" onclick="window.addGeneratorRow()" style="padding: 6px 14px; font-size: 13px; border-radius: 8px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;">
+									<span style="font-size: 15px; font-weight: bold; line-height: 1;">+</span> 添加生成器
+								</button>
+							</div>
 						</div>
 						<div id="generatorListContainer" style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 8px;">
 							<!-- 动态行 -->
 						</div>
 						<input type="hidden" id="generatorURL" title="优选订阅生成器" placeholder="sub.cmliussss.net">
 						<div style="font-size: 12px; color: #6b7280; line-height: 1.6; margin-top: 6px;">
-							💡 提示：支持添加多个优选生成器域名（例如 <code>sub.bbc.xx.kg</code>、<code>sub.mot.cloudns.biz</code>）。系统将多源并发请求并自动去重；若个别生成器失效或超时（4秒），不会影响其他生成器正常使用。
+							💡 提示：按住左侧 <b>⠿</b> 手柄可直接拖拽上下排序，排在上面的优质生成器在聚合订阅中享有更高优先级；支持单独 <b>停用/启用</b> 特定生成器；点击「⚡ 检测」可实时测量连通性、延迟与可用节点数（一键检测会自动跳过已停用项）。
 						</div>
 					</div>
 
 					<script>
 					(function() {
+						var __isInternalSyncing = false;
+
 						function extractCleanHost(val) {
 							if (!val) return '';
 							let s = String(val).trim();
+							s = s.replace(/^[#!]+/, '').trim();
 							s = s.replace(/^https?:\\/\\//i, '').replace(/^sub:\\/\\//i, '');
 							s = s.split('#')[0].split('?')[0].split('/')[0].trim();
 							return s;
 						}
 
-						window.createGeneratorRowElement = function(initialVal) {
+						window.moveGeneratorRow = function(btn, delta) {
+							const row = btn.closest('.generator-row-item');
+							if (!row) return;
+							if (delta === -1 && row.previousElementSibling) {
+								row.parentNode.insertBefore(row, row.previousElementSibling);
+								window.syncGeneratorValueFromInputs();
+							} else if (delta === 1 && row.nextElementSibling) {
+								row.parentNode.insertBefore(row.nextElementSibling, row);
+								window.syncGeneratorValueFromInputs();
+							}
+						};
+
+						window.toggleGeneratorRow = function(checkbox) {
+							const row = checkbox.closest('.generator-row-item');
+							if (!row) return;
+							const isChecked = checkbox.checked;
+							const switchLabel = row.querySelector('.gen-switch-text');
+							if (switchLabel) {
+								switchLabel.textContent = isChecked ? '启用' : '停用';
+								switchLabel.style.color = isChecked ? '#10b981' : '#9ca3af';
+							}
+							const badge = row.querySelector('.generator-status-badge');
+							if (isChecked) {
+								row.classList.remove('is-disabled');
+								if (badge) {
+									if (badge.dataset.lastActiveHtml) {
+										badge.innerHTML = badge.dataset.lastActiveHtml;
+									} else {
+										badge.innerHTML = '<span style="color: #9ca3af;">⚪ 未检测</span>';
+									}
+								}
+							} else {
+								row.classList.add('is-disabled');
+								if (badge) {
+									if (!badge.innerHTML.includes('已停用')) {
+										badge.dataset.lastActiveHtml = badge.innerHTML;
+									}
+									badge.innerHTML = '<span style="color: #9ca3af; font-style: italic;">⏸️ 已停用 (不参与聚合拉取)</span>';
+								}
+							}
+							window.syncGeneratorValueFromInputs();
+						};
+
+						window.testSingleGeneratorRow = async function(btn) {
+							const row = btn.closest('.generator-row-item');
+							if (!row) return;
+							const input = row.querySelector('.generator-item-input');
+							const badge = row.querySelector('.generator-status-badge');
+							const cleanHost = extractCleanHost(input.value);
+							if (!cleanHost) {
+								badge.innerHTML = '<span style="color: #ef4444;">⚠️ 请先输入有效域名</span>';
+								return;
+							}
+
+							badge.innerHTML = '<span style="color: #3b82f6; display: inline-flex; align-items: center; gap: 4px;"><span class="gen-spin">🔄</span> 检测中...</span>';
+							btn.disabled = true;
+
+							try {
+								const res = await fetch('/admin/test-generator?host=' + encodeURIComponent(cleanHost));
+								const data = await res.json();
+								btn.disabled = false;
+
+								if (data.ok) {
+									let resultHtml = '';
+									if (data.quality === 'good') {
+										resultHtml = '<span style="color: #10b981; font-weight: 600; display: inline-flex; align-items: center; gap: 4px;">🟢 优选 <span style="font-weight: normal; color: #059669;">(' + data.latency + 'ms · ' + data.nodeCount + '个节点)</span></span>';
+									} else if (data.quality === 'medium') {
+										resultHtml = '<span style="color: #f59e0b; font-weight: 600; display: inline-flex; align-items: center; gap: 4px;">🟡 正常 <span style="font-weight: normal; color: #d97706;">(' + data.latency + 'ms · ' + data.nodeCount + '个节点)</span></span>';
+									} else {
+										resultHtml = '<span style="color: #f97316; font-weight: 600; display: inline-flex; align-items: center; gap: 4px;">🟠 迟缓 <span style="font-weight: normal; color: #ea580c;">(' + data.latency + 'ms · ' + data.nodeCount + '个节点)</span></span>';
+									}
+									const toggle = row.querySelector('.gen-switch-input');
+									if (toggle && !toggle.checked) {
+										resultHtml += ' <span style="color: #9ca3af; font-size: 11px;">(已停用)</span>';
+									} else {
+										badge.dataset.lastActiveHtml = resultHtml;
+									}
+									badge.innerHTML = resultHtml;
+								} else {
+									badge.innerHTML = '<span style="color: #ef4444; font-weight: 600; display: inline-flex; align-items: center; gap: 4px;" title="' + (data.error || '不可用') + '">🔴 不可用 <span style="font-weight: normal; color: #dc2626;">(' + (data.error || '超时或异常') + ')</span></span>';
+								}
+							} catch (err) {
+								btn.disabled = false;
+								badge.innerHTML = '<span style="color: #ef4444; font-weight: 600;">🔴 检测失败 (' + err.message + ')</span>';
+							}
+						};
+
+						window.testAllGenerators = async function() {
+							const btn = document.getElementById('testAllGeneratorsBtn');
+							const icon = document.getElementById('testAllIcon');
+							const text = document.getElementById('testAllText');
+							if (btn) btn.disabled = true;
+							if (icon) {
+								icon.innerText = '🔄';
+								icon.className = 'gen-spin';
+							}
+							if (text) text.innerText = '全面检测中...';
+
+							const rows = document.querySelectorAll('.generator-row-item');
+							const tasks = [];
+							rows.forEach(function(r) {
+								const toggle = r.querySelector('.gen-switch-input');
+								if (toggle && !toggle.checked) return;
+
+								const input = r.querySelector('.generator-item-input');
+								const testBtn = r.querySelector('.btn-test-gen');
+								if (input && extractCleanHost(input.value) && testBtn) {
+									tasks.push(window.testSingleGeneratorRow(testBtn));
+								}
+							});
+
+							await Promise.allSettled(tasks);
+
+							if (btn) btn.disabled = false;
+							if (icon) {
+								icon.innerText = '⚡';
+								icon.className = '';
+							}
+							if (text) text.innerText = '一键检测全部';
+						};
+
+						window.createGeneratorRowElement = function(initialVal, isEnabled) {
 							const container = document.getElementById('generatorListContainer');
 							if (!container) return;
+
+							let rawVal = initialVal || '';
+							if (isEnabled === undefined) {
+								if (typeof rawVal === 'string' && (rawVal.trim().startsWith('#') || rawVal.trim().startsWith('!'))) {
+									isEnabled = false;
+								} else {
+									isEnabled = true;
+								}
+							}
+							const cleanHost = extractCleanHost(rawVal);
+
 							const row = document.createElement('div');
-							row.className = 'generator-row-item';
-							row.style.cssText = 'display: flex; gap: 10px; align-items: center; width: 100%;';
+							row.className = 'generator-row-item' + (isEnabled ? '' : ' is-disabled');
+
+							// 左侧拖动把手与移动按钮
+							const dragCol = document.createElement('div');
+							dragCol.style.cssText = 'display: flex; align-items: center; gap: 6px; flex-shrink: 0;';
+
+							const handle = document.createElement('span');
+							handle.className = 'generator-drag-handle';
+							handle.innerHTML = '⠿';
+							handle.title = '按住拖动以调整优先级';
+
+							const moveBtns = document.createElement('div');
+							moveBtns.style.cssText = 'display: flex; flex-direction: column; gap: 2px;';
 							
-							const inputWrapper = document.createElement('div');
-							inputWrapper.style.cssText = 'flex: 1; width: 100%;';
-							
+							const upBtn = document.createElement('button');
+							upBtn.type = 'button';
+							upBtn.className = 'btn-gen-move';
+							upBtn.innerHTML = '▲';
+							upBtn.title = '上移提高优先级';
+							upBtn.onclick = function() { window.moveGeneratorRow(upBtn, -1); };
+
+							const downBtn = document.createElement('button');
+							downBtn.type = 'button';
+							downBtn.className = 'btn-gen-move';
+							downBtn.innerHTML = '▼';
+							downBtn.title = '下移降低优先级';
+							downBtn.onclick = function() { window.moveGeneratorRow(downBtn, 1); };
+
+							moveBtns.appendChild(upBtn);
+							moveBtns.appendChild(downBtn);
+							dragCol.appendChild(handle);
+							dragCol.appendChild(moveBtns);
+
+							// 中间输入框与状态展示
+							const midCol = document.createElement('div');
+							midCol.style.cssText = 'flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px;';
+
 							const input = document.createElement('input');
 							input.type = 'text';
 							input.className = 'generator-item-input';
-							input.value = initialVal || '';
+							input.value = cleanHost || '';
 							input.placeholder = '例如: sub.bbc.xx.kg 或 sub.mot.cloudns.biz';
-							input.style.cssText = 'padding: 12px 14px; border-radius: 10px; font-size: 14px; width: 100%;';
+							input.style.cssText = 'padding: 8px 12px; border-radius: 8px; font-size: 14px; width: 100%; box-sizing: border-box;';
 							input.oninput = window.syncGeneratorValueFromInputs;
 							input.onchange = window.syncGeneratorValueFromInputs;
-							inputWrapper.appendChild(input);
+
+							const statusBadge = document.createElement('div');
+							statusBadge.className = 'generator-status-badge';
+							statusBadge.style.cssText = 'font-size: 12px; display: flex; align-items: center; gap: 6px; min-height: 18px; color: #6b7280;';
+							if (!isEnabled) {
+								statusBadge.innerHTML = '<span style="color: #9ca3af; font-style: italic;">⏸️ 已停用 (不参与聚合拉取)</span>';
+							} else {
+								statusBadge.innerHTML = '<span style="color: #9ca3af;">⚪ 未检测</span>';
+							}
+
+							midCol.appendChild(input);
+							midCol.appendChild(statusBadge);
+
+							// 右侧动作按钮 (开关 + ⚡检测 + ✕删除)
+							const actionCol = document.createElement('div');
+							actionCol.style.cssText = 'display: flex; align-items: center; gap: 8px; flex-shrink: 0; flex-wrap: wrap; justify-content: flex-end;';
+
+							// 启用/停用开关容器
+							const switchContainer = document.createElement('label');
+							switchContainer.className = 'gen-switch-container';
+							switchContainer.title = '点击启用或停用此生成器';
+
+							const switchInput = document.createElement('input');
+							switchInput.type = 'checkbox';
+							switchInput.className = 'gen-switch-input';
+							switchInput.checked = !!isEnabled;
+							switchInput.onchange = function() { window.toggleGeneratorRow(switchInput); };
+
+							const switchTrack = document.createElement('span');
+							switchTrack.className = 'gen-switch-track';
+
+							const switchThumb = document.createElement('span');
+							switchThumb.className = 'gen-switch-thumb';
+							switchTrack.appendChild(switchThumb);
+
+							const switchText = document.createElement('span');
+							switchText.className = 'gen-switch-text';
+							switchText.style.cssText = 'font-size: 12px; font-weight: 600; color: ' + (isEnabled ? '#10b981' : '#9ca3af') + '; min-width: 26px;';
+							switchText.textContent = isEnabled ? '启用' : '停用';
+
+							switchContainer.appendChild(switchInput);
+							switchContainer.appendChild(switchTrack);
+							switchContainer.appendChild(switchText);
+
+							const testBtn = document.createElement('button');
+							testBtn.type = 'button';
+							testBtn.className = 'btn btn-secondary btn-test-gen';
+							testBtn.style.cssText = 'padding: 7px 12px; font-size: 13px; border-radius: 8px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;';
+							testBtn.innerHTML = '⚡ 检测';
+							testBtn.title = '测试此生成器延迟与节点状态';
+							testBtn.onclick = function() { window.testSingleGeneratorRow(testBtn); };
 
 							const delBtn = document.createElement('button');
 							delBtn.type = 'button';
 							delBtn.className = 'btn btn-secondary btn-del-gen';
-							delBtn.style.cssText = 'padding: 10px 14px; font-size: 13px; border-radius: 10px; color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.3); background: rgba(239, 68, 68, 0.05); cursor: pointer; flex-shrink: 0;';
+							delBtn.style.cssText = 'padding: 7px 12px; font-size: 13px; border-radius: 8px; color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.3); background: rgba(239, 68, 68, 0.05); cursor: pointer;';
 							delBtn.innerHTML = '✕ 删除';
 							delBtn.title = '删除此生成器';
 							delBtn.onclick = function() { window.removeGeneratorRow(delBtn); };
 
-							row.appendChild(inputWrapper);
-							row.appendChild(delBtn);
+							actionCol.appendChild(switchContainer);
+							actionCol.appendChild(testBtn);
+							actionCol.appendChild(delBtn);
+
+							row.appendChild(dragCol);
+							row.appendChild(midCol);
+							row.appendChild(actionCol);
+
+							// 拖拽事件监听
+							handle.addEventListener('mousedown', function() {
+								row.setAttribute('draggable', 'true');
+							});
+							handle.addEventListener('mouseup', function() {
+								row.removeAttribute('draggable');
+							});
+							row.addEventListener('dragstart', function(e) {
+								window.__draggedGeneratorRow = row;
+								e.dataTransfer.effectAllowed = 'move';
+								e.dataTransfer.setData('text/plain', '');
+								row.style.opacity = '0.4';
+								row.style.border = '1px dashed #3b82f6';
+							});
+							row.addEventListener('dragend', function() {
+								row.removeAttribute('draggable');
+								row.style.opacity = isEnabled ? '1' : '0.55';
+								row.style.border = '1px solid ' + (isEnabled ? 'rgba(156, 163, 175, 0.25)' : 'rgba(156, 163, 175, 0.15)');
+								window.__draggedGeneratorRow = null;
+								window.syncGeneratorValueFromInputs();
+							});
+							row.addEventListener('dragover', function(e) {
+								e.preventDefault();
+								const dragged = window.__draggedGeneratorRow;
+								if (!dragged || dragged === row) return;
+								const rect = row.getBoundingClientRect();
+								const midY = rect.top + rect.height / 2;
+								if (e.clientY < midY) {
+									row.parentNode.insertBefore(dragged, row);
+								} else {
+									row.parentNode.insertBefore(dragged, row.nextSibling);
+								}
+							});
+
 							container.appendChild(row);
 						};
 
@@ -6042,19 +6494,26 @@ function 增强管理后台HTML(html) {
 							if (!container) return;
 							let list = [];
 							if (Array.isArray(rawVal)) {
-								list = rawVal.map(extractCleanHost).filter(Boolean);
+								list = rawVal;
 							} else if (typeof rawVal === 'string' && rawVal.trim()) {
-								list = rawVal.split(/[\\r\\n,;]+/).map(extractCleanHost).filter(Boolean);
+								list = rawVal.split(/[\\r\\n,;]+/).map(s => s.trim()).filter(Boolean);
 							}
 							container.innerHTML = '';
 							if (list.length === 0) list = [''];
-							list.forEach(function(host) {
-								window.createGeneratorRowElement(host);
+							list.forEach(function(item) {
+								let isEnabled = true;
+								let str = String(item).trim();
+								if (str.startsWith('#') || str.startsWith('!')) {
+									isEnabled = false;
+									str = str.replace(/^[#!]+/, '').trim();
+								}
+								const clean = extractCleanHost(str);
+								window.createGeneratorRowElement(clean, isEnabled);
 							});
 						};
 
 						window.addGeneratorRow = function() {
-							window.createGeneratorRowElement('');
+							window.createGeneratorRowElement('', true);
 							const inputs = document.querySelectorAll('.generator-item-input');
 							if (inputs.length > 0) inputs[inputs.length - 1].focus();
 							window.syncGeneratorValueFromInputs();
@@ -6065,7 +6524,7 @@ function 增强管理后台HTML(html) {
 							if (row) row.remove();
 							const container = document.getElementById('generatorListContainer');
 							if (container && container.querySelectorAll('.generator-row-item').length === 0) {
-								window.createGeneratorRowElement('');
+								window.createGeneratorRowElement('', true);
 							}
 							window.syncGeneratorValueFromInputs();
 						};
@@ -6073,20 +6532,34 @@ function 增强管理后台HTML(html) {
 						window.syncGeneratorValueFromInputs = function() {
 							const hiddenInput = document.getElementById('generatorURL');
 							if (!hiddenInput) return;
-							const inputs = document.querySelectorAll('.generator-item-input');
+							const rows = document.querySelectorAll('.generator-row-item');
 							const hosts = [];
-							inputs.forEach(function(input) {
+							rows.forEach(function(row) {
+								const input = row.querySelector('.generator-item-input');
+								if (!input) return;
 								const clean = extractCleanHost(input.value);
-								if (clean) hosts.push(clean);
+								if (!clean) return;
+								const toggle = row.querySelector('.gen-switch-input');
+								const isEnabled = toggle ? toggle.checked : true;
+								if (isEnabled) {
+									hosts.push(clean);
+								} else {
+									hosts.push('#' + clean);
+								}
 							});
 							const joined = hosts.join(',');
 
-							const proto = Object.getPrototypeOf(hiddenInput);
-							const nativeDesc = Object.getOwnPropertyDescriptor(proto, 'value');
-							if (nativeDesc && nativeDesc.set) {
-								nativeDesc.set.call(hiddenInput, joined);
-							} else {
-								hiddenInput.value = joined;
+							__isInternalSyncing = true;
+							try {
+								const proto = Object.getPrototypeOf(hiddenInput);
+								const nativeDesc = Object.getOwnPropertyDescriptor(proto, 'value');
+								if (nativeDesc && nativeDesc.set) {
+									nativeDesc.set.call(hiddenInput, joined);
+								} else {
+									hiddenInput.value = joined;
+								}
+							} finally {
+								__isInternalSyncing = false;
 							}
 
 							if (typeof markModified === 'function') {
@@ -6107,7 +6580,9 @@ function 增强管理后台HTML(html) {
 								set: function(newVal) {
 									if (nativeDesc && nativeDesc.set) nativeDesc.set.call(hiddenInput, newVal);
 									else this.setAttribute('value', newVal);
-									window.syncGeneratorRowsFromValue(newVal);
+									if (!__isInternalSyncing) {
+										window.syncGeneratorRowsFromValue(newVal);
+									}
 								}
 							});
 							window.processGeneratorURL = function() { window.syncGeneratorValueFromInputs(); };
@@ -6220,7 +6695,10 @@ async function 获取优选订阅生成器数据(优选订阅生成器HOST, uid 
 		hostList = 优选订阅生成器HOST.split(/[\r\n,;]+/).map(h => h.trim()).filter(Boolean);
 	}
 
-	hostList = [...new Set(hostList.map(h => h.trim()).filter(Boolean))];
+	hostList = hostList
+		.map(h => h.trim())
+		.filter(h => h && !h.startsWith('#') && !h.startsWith('!') && !h.startsWith('//'));
+	hostList = [...new Set(hostList)];
 	if (hostList.length === 0) return [[], ''];
 
 	const results = await Promise.allSettled(hostList.map(h => 获取单个优选订阅生成器数据(h, uid)));
