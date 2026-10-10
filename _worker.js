@@ -2369,7 +2369,6 @@ async function forwardataTCP(host, portNum, rawData, ws, respHeader, remoteConnW
 	const ctx反代兜底 = 反代上下文.反代兜底 !== undefined ? 反代上下文.反代兜底 : true;
 	let 反代数组索引 = 0;
 	log(`[TCP转发] 目标: ${host}:${portNum} | 反代IP: ${ctx反代IP} | 反代兜底: ${ctx反代兜底 ? '是' : '否'} | 反代类型: ${ctx代理类型 || 'proxyip'} | 全局: ${ctx代理全局 ? '是' : '否'}`);
-	const 连接超时毫秒 = 1000;
 	let 已通过代理发送首包 = false;
 	const TCP连接 = 创建请求TCP连接器(request);
 	const 使用木马反代 = 允许木马反代 && (反代上下文.木马反代地址 || null);
@@ -2408,27 +2407,8 @@ async function forwardataTCP(host, portNum, rawData, ws, respHeader, remoteConnW
 		return true;
 	};
 
-	async function 等待连接建立(remoteSock) {
-		if (remoteSock?.opened) {
-			await remoteSock.opened;
-		}
-	}
-
 	async function 打开TCP连接(address, port, 超时毫秒 = 1000) {
-		const remoteSock = TCP连接({ hostname: address, port });
-		let timer = null;
-		const 超时任务 = new Promise((_, reject) => {
-			timer = setTimeout(() => reject(new Error(`连接 ${address}:${port} 握手超时(${超时毫秒}ms)`)), 超时毫秒);
-		});
-		try {
-			await Promise.race([等待连接建立(remoteSock), 超时任务]);
-			clearTimeout(timer);
-			return remoteSock;
-		} catch (err) {
-			clearTimeout(timer);
-			try { remoteSock?.close?.() } catch (e) { }
-			throw err;
-		}
+		return 带超时打开TCP连接(TCP连接, address, port, 超时毫秒);
 	}
 
 	async function 写入首包(remoteSock, data) {
