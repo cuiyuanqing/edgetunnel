@@ -437,7 +437,8 @@ const regressionTestSuites = [
 	'test_proxyip_routing.mjs',
 	'test_dial_timeout.mjs',
 	'test_admin_html_injection.mjs',
-	'test_config_kv.mjs'
+	'test_config_kv.mjs',
+	'test_disguise_blog.mjs'
 ];
 
 for (const suite of regressionTestSuites) {

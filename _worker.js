@@ -80,7 +80,7 @@ async function 带超时打开TCP连接(TCP连接, address, port, 超时毫秒 =
 	}
 }
 
-export { 美区高可用备用热池, 打乱数组, 获取出口反代候选队列, 带超时打开TCP连接, 增强管理后台HTML, 增强ProxyIPSection, 读取config_JSON };
+export { 美区高可用备用热池, 打乱数组, 获取出口反代候选队列, 带超时打开TCP连接, 增强管理后台HTML, 增强ProxyIPSection, 读取config_JSON, blogDaTree, nginx };
 ///////////////////////////////////////////////////////主程序入口///////////////////////////////////////////////
 export default {
 	async fetch(request, env, ctx) {
@@ -697,13 +697,14 @@ export default {
 		}
 
 		let 伪装页URL = env.URL || 'nginx';
-		if (伪装页URL && 伪装页URL !== 'nginx' && 伪装页URL !== '1101') {
+		if (伪装页URL && 伪装页URL !== 'nginx' && 伪装页URL !== 'blog' && 伪装页URL !== '1101') {
 			伪装页URL = 伪装页URL.trim().replace(/\/$/, '');
 			if (!伪装页URL.match(/^https?:\/\//i)) 伪装页URL = 'https://' + 伪装页URL;
 			if (伪装页URL.toLowerCase().startsWith('http://')) 伪装页URL = 'https://' + 伪装页URL.substring(7);
 			try { const u = new URL(伪装页URL); 伪装页URL = u.protocol + '//' + u.host } catch (e) { 伪装页URL = 'nginx' }
 		}
 		if (伪装页URL === '1101') return new Response(await html1101(url.host, 访问IP), { status: 200, headers: { 'Content-Type': 'text/html; charset=UTF-8' } });
+		if (伪装页URL === 'nginx' || 伪装页URL === 'blog' || !伪装页URL) return new Response(await blogDaTree(), { status: 200, headers: { 'Content-Type': 'text/html; charset=UTF-8', 'Cache-Control': 'no-store, no-cache, must-revalidate' } });
 		try {
 			const 反代URL = new URL(伪装页URL), 新请求头 = new Headers(request.headers);
 			新请求头.set('Host', 反代URL.host);
@@ -719,7 +720,7 @@ export default {
 			}
 			return 反代响应;
 		} catch (error) { }
-		return new Response(await nginx(), { status: 200, headers: { 'Content-Type': 'text/html; charset=UTF-8', 'Cache-Control': 'no-store, no-cache, must-revalidate' } });
+		return new Response(await blogDaTree(), { status: 200, headers: { 'Content-Type': 'text/html; charset=UTF-8', 'Cache-Control': 'no-store, no-cache, must-revalidate' } });
 	}
 };
 ///////////////////////////////////////////////////////////////////////叉HTTP传输数据///////////////////////////////////////////////
@@ -7503,33 +7504,984 @@ async function 解析地址端口(proxyIP, 目标域名 = 'dash.cloudflare.com',
 
 //////////////////////////////////////////////////////HTML伪装页面///////////////////////////////////////////////
 async function nginx() {
-	return `
-	<!DOCTYPE html>
-	<html>
-	<head>
-	<title>Welcome to nginx!</title>
+	return blogDaTree();
+}
+
+async function blogDaTree() {
+	return `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>DaTree's Blog - 枝繁叶茂，静水深流</title>
+	<meta name="description" content="DaTree的技术随笔与系统架构笔记，专注云原生、分布式服务、现代网络协议与极简软件工程。">
 	<style>
+		:root {
+			--bg-main: #f8fafc;
+			--bg-card: #ffffff;
+			--bg-glass: rgba(255, 255, 255, 0.85);
+			--text-primary: #0f172a;
+			--text-secondary: #475569;
+			--text-muted: #94a3b8;
+			--border-color: #e2e8f0;
+			--accent: #0284c7;
+			--accent-hover: #0369a1;
+			--accent-soft: #e0f2fe;
+			--code-bg: #f1f5f9;
+			--tag-bg: #f1f5f9;
+			--tag-text: #0369a1;
+			--shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+			--shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.08), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
+			--shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.05);
+		}
+
+		[data-theme="dark"] {
+			--bg-main: #0b1120;
+			--bg-card: #151e32;
+			--bg-glass: rgba(21, 30, 50, 0.85);
+			--text-primary: #f8fafc;
+			--text-secondary: #94a3b8;
+			--text-muted: #64748b;
+			--border-color: #1e293b;
+			--accent: #38bdf8;
+			--accent-hover: #7dd3fc;
+			--accent-soft: #0c4a6e;
+			--code-bg: #0f172a;
+			--tag-bg: #1e293b;
+			--tag-text: #38bdf8;
+			--shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.5);
+			--shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4);
+			--shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
+		}
+
+		* {
+			box-sizing: border-box;
+			margin: 0;
+			padding: 0;
+		}
+
 		body {
-			width: 35em;
+			font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+			background-color: var(--bg-main);
+			color: var(--text-primary);
+			line-height: 1.6;
+			transition: background-color 0.3s ease, color 0.3s ease;
+			min-height: 100vh;
+			display: flex;
+			flex-direction: column;
+		}
+
+		/* Header */
+		header {
+			position: sticky;
+			top: 0;
+			z-index: 50;
+			background: var(--bg-glass);
+			backdrop-filter: blur(12px);
+			-webkit-backdrop-filter: blur(12px);
+			border-bottom: 1px solid var(--border-color);
+		}
+
+		.header-container {
+			max-width: 1100px;
 			margin: 0 auto;
-			font-family: Tahoma, Verdana, Arial, sans-serif;
+			padding: 0.85rem 1.5rem;
+			display: flex;
+			align-items: center;
+			justify-content: space-between;
+		}
+
+		.brand {
+			display: flex;
+			align-items: center;
+			gap: 0.75rem;
+			text-decoration: none;
+			color: var(--text-primary);
+			font-weight: 700;
+			font-size: 1.25rem;
+			letter-spacing: -0.02em;
+		}
+
+		.brand-icon {
+			width: 32px;
+			height: 32px;
+			color: var(--accent);
+		}
+
+		.nav-actions {
+			display: flex;
+			align-items: center;
+			gap: 1rem;
+		}
+
+		.nav-link {
+			text-decoration: none;
+			color: var(--text-secondary);
+			font-size: 0.95rem;
+			font-weight: 500;
+			transition: color 0.2s;
+			padding: 0.25rem 0.5rem;
+			border-radius: 6px;
+		}
+
+		.nav-link:hover {
+			color: var(--accent);
+		}
+
+		.theme-toggle-btn {
+			background: var(--bg-card);
+			border: 1px solid var(--border-color);
+			color: var(--text-primary);
+			padding: 0.5rem;
+			border-radius: 8px;
+			cursor: pointer;
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			width: 36px;
+			height: 36px;
+			box-shadow: var(--shadow-sm);
+			transition: all 0.2s;
+		}
+
+		.theme-toggle-btn:hover {
+			border-color: var(--accent);
+			color: var(--accent);
+		}
+
+		/* Main Layout */
+		.main-wrapper {
+			max-width: 1100px;
+			margin: 2rem auto;
+			padding: 0 1.5rem;
+			flex: 1;
+			display: grid;
+			grid-template-columns: 290px 1fr;
+			gap: 2rem;
+			align-items: start;
+		}
+
+		/* Profile Sidebar */
+		.sidebar {
+			position: sticky;
+			top: 5rem;
+			background: var(--bg-card);
+			border: 1px solid var(--border-color);
+			border-radius: 14px;
+			padding: 1.75rem 1.5rem;
+			box-shadow: var(--shadow-sm);
+			text-align: center;
+		}
+
+		.avatar-wrapper {
+			width: 96px;
+			height: 96px;
+			margin: 0 auto 1.25rem;
+			border-radius: 50%;
+			background: linear-gradient(135deg, #0284c7 0%, #0d9488 100%);
+			padding: 3px;
+			box-shadow: var(--shadow-md);
+		}
+
+		.avatar-inner {
+			width: 100%;
+			height: 100%;
+			border-radius: 50%;
+			background: var(--bg-card);
+			display: flex;
+			align-items: center;
+			justify-content: center;
+		}
+
+		.avatar-svg {
+			width: 52px;
+			height: 52px;
+			color: var(--accent);
+		}
+
+		.author-name {
+			font-size: 1.35rem;
+			font-weight: 700;
+			color: var(--text-primary);
+			margin-bottom: 0.25rem;
+		}
+
+		.author-subtitle {
+			font-size: 0.85rem;
+			color: var(--text-muted);
+			margin-bottom: 1rem;
+		}
+
+		.author-bio {
+			font-size: 0.9rem;
+			color: var(--text-secondary);
+			line-height: 1.6;
+			margin-bottom: 1.25rem;
+			text-align: justify;
+			text-align-last: center;
+		}
+
+		.author-stats {
+			display: flex;
+			justify-content: space-around;
+			padding: 0.85rem 0;
+			border-top: 1px solid var(--border-color);
+			border-bottom: 1px solid var(--border-color);
+			margin-bottom: 1.25rem;
+		}
+
+		.stat-item {
+			display: flex;
+			flex-direction: column;
+		}
+
+		.stat-num {
+			font-weight: 700;
+			font-size: 1.1rem;
+			color: var(--accent);
+		}
+
+		.stat-label {
+			font-size: 0.75rem;
+			color: var(--text-muted);
+		}
+
+		.tech-tags {
+			display: flex;
+			flex-wrap: wrap;
+			gap: 0.4rem;
+			justify-content: center;
+		}
+
+		.tag-pill {
+			font-size: 0.75rem;
+			background: var(--tag-bg);
+			color: var(--tag-text);
+			padding: 0.2rem 0.55rem;
+			border-radius: 6px;
+			font-weight: 500;
+		}
+
+		/* Content Area */
+		.content-area {
+			display: flex;
+			flex-direction: column;
+			gap: 1.5rem;
+		}
+
+		/* Search & Filter Toolbar */
+		.toolbar {
+			background: var(--bg-card);
+			border: 1px solid var(--border-color);
+			border-radius: 12px;
+			padding: 1rem 1.25rem;
+			box-shadow: var(--shadow-sm);
+			display: flex;
+			flex-direction: column;
+			gap: 0.85rem;
+		}
+
+		.search-input-wrapper {
+			position: relative;
+			display: flex;
+			align-items: center;
+		}
+
+		.search-icon {
+			position: absolute;
+			left: 0.85rem;
+			width: 18px;
+			height: 18px;
+			color: var(--text-muted);
+			pointer-events: none;
+		}
+
+		.search-input {
+			width: 100%;
+			padding: 0.6rem 0.85rem 0.6rem 2.4rem;
+			border-radius: 8px;
+			border: 1px solid var(--border-color);
+			background: var(--bg-main);
+			color: var(--text-primary);
+			font-size: 0.9rem;
+			outline: none;
+			transition: border-color 0.2s, box-shadow 0.2s;
+		}
+
+		.search-input:focus {
+			border-color: var(--accent);
+			box-shadow: 0 0 0 3px var(--accent-soft);
+		}
+
+		.filter-chips {
+			display: flex;
+			gap: 0.5rem;
+			flex-wrap: wrap;
+		}
+
+		.filter-chip {
+			border: 1px solid var(--border-color);
+			background: var(--bg-main);
+			color: var(--text-secondary);
+			padding: 0.3rem 0.75rem;
+			border-radius: 20px;
+			font-size: 0.82rem;
+			cursor: pointer;
+			transition: all 0.2s;
+		}
+
+		.filter-chip:hover {
+			border-color: var(--accent);
+			color: var(--accent);
+		}
+
+		.filter-chip.active {
+			background: var(--accent);
+			color: #ffffff;
+			border-color: var(--accent);
+		}
+
+		/* Article Cards */
+		.articles-list {
+			display: flex;
+			flex-direction: column;
+			gap: 1.25rem;
+		}
+
+		.article-card {
+			background: var(--bg-card);
+			border: 1px solid var(--border-color);
+			border-radius: 12px;
+			padding: 1.5rem;
+			box-shadow: var(--shadow-sm);
+			transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+			display: flex;
+			flex-direction: column;
+			gap: 0.75rem;
+			cursor: pointer;
+		}
+
+		.article-card:hover {
+			transform: translateY(-2px);
+			box-shadow: var(--shadow-md);
+			border-color: var(--accent);
+		}
+
+		.article-header {
+			display: flex;
+			align-items: center;
+			justify-content: space-between;
+			gap: 0.5rem;
+			flex-wrap: wrap;
+		}
+
+		.article-category {
+			font-size: 0.75rem;
+			font-weight: 600;
+			text-transform: uppercase;
+			color: var(--accent);
+			background: var(--accent-soft);
+			padding: 0.2rem 0.55rem;
+			border-radius: 4px;
+		}
+
+		.article-meta {
+			font-size: 0.8rem;
+			color: var(--text-muted);
+			display: flex;
+			align-items: center;
+			gap: 0.75rem;
+		}
+
+		.article-title {
+			font-size: 1.25rem;
+			font-weight: 700;
+			color: var(--text-primary);
+			line-height: 1.4;
+			transition: color 0.2s;
+		}
+
+		.article-card:hover .article-title {
+			color: var(--accent);
+		}
+
+		.article-summary {
+			font-size: 0.92rem;
+			color: var(--text-secondary);
+			line-height: 1.6;
+		}
+
+		.article-footer {
+			display: flex;
+			align-items: center;
+			justify-content: space-between;
+			margin-top: 0.5rem;
+			padding-top: 0.75rem;
+			border-top: 1px dashed var(--border-color);
+		}
+
+		.article-tags {
+			display: flex;
+			gap: 0.4rem;
+			flex-wrap: wrap;
+		}
+
+		.article-tag {
+			font-size: 0.75rem;
+			color: var(--text-muted);
+		}
+
+		.read-more-btn {
+			font-size: 0.85rem;
+			font-weight: 600;
+			color: var(--accent);
+			display: flex;
+			align-items: center;
+			gap: 0.25rem;
+			border: none;
+			background: transparent;
+			cursor: pointer;
+		}
+
+		.no-match {
+			text-align: center;
+			padding: 3rem 1rem;
+			background: var(--bg-card);
+			border: 1px dashed var(--border-color);
+			border-radius: 12px;
+			color: var(--text-muted);
+			font-size: 0.95rem;
+			display: none;
+		}
+
+		/* Modal Article Reader */
+		.reader-modal {
+			position: fixed;
+			top: 0;
+			left: 0;
+			width: 100%;
+			height: 100%;
+			background: rgba(15, 23, 42, 0.7);
+			backdrop-filter: blur(6px);
+			-webkit-backdrop-filter: blur(6px);
+			z-index: 100;
+			display: none;
+			align-items: center;
+			justify-content: center;
+			padding: 1rem;
+		}
+
+		.reader-modal.open {
+			display: flex;
+			animation: fadeIn 0.25s ease-out;
+		}
+
+		@keyframes fadeIn {
+			from { opacity: 0; }
+			to { opacity: 1; }
+		}
+
+		.modal-container {
+			background: var(--bg-card);
+			border: 1px solid var(--border-color);
+			border-radius: 16px;
+			width: 100%;
+			max-width: 820px;
+			max-height: 90vh;
+			display: flex;
+			flex-direction: column;
+			box-shadow: var(--shadow-lg);
+			animation: slideUp 0.25s ease-out;
+			overflow: hidden;
+		}
+
+		@keyframes slideUp {
+			from { transform: translateY(20px); opacity: 0; }
+			to { transform: translateY(0); opacity: 1; }
+		}
+
+		.modal-header {
+			padding: 1.25rem 1.75rem;
+			border-bottom: 1px solid var(--border-color);
+			display: flex;
+			align-items: center;
+			justify-content: space-between;
+			background: var(--bg-glass);
+		}
+
+		.modal-title-group {
+			display: flex;
+			flex-direction: column;
+			gap: 0.35rem;
+		}
+
+		.modal-category {
+			font-size: 0.75rem;
+			font-weight: 600;
+			color: var(--accent);
+		}
+
+		.modal-meta {
+			font-size: 0.8rem;
+			color: var(--text-muted);
+			display: flex;
+			gap: 0.75rem;
+		}
+
+		.modal-close-btn {
+			background: transparent;
+			border: 1px solid var(--border-color);
+			border-radius: 8px;
+			width: 34px;
+			height: 34px;
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			color: var(--text-secondary);
+			cursor: pointer;
+			transition: all 0.2s;
+		}
+
+		.modal-close-btn:hover {
+			background: var(--bg-main);
+			color: var(--text-primary);
+			border-color: var(--text-muted);
+		}
+
+		.modal-body {
+			padding: 2rem 1.75rem;
+			overflow-y: auto;
+			line-height: 1.8;
+			font-size: 1rem;
+			color: var(--text-primary);
+		}
+
+		.modal-body h1 {
+			font-size: 1.6rem;
+			margin-bottom: 1.25rem;
+			line-height: 1.35;
+			color: var(--text-primary);
+		}
+
+		.modal-body h2 {
+			font-size: 1.3rem;
+			margin: 1.5rem 0 0.75rem;
+			color: var(--text-primary);
+			border-bottom: 1px solid var(--border-color);
+			padding-bottom: 0.35rem;
+		}
+
+		.modal-body h3 {
+			font-size: 1.1rem;
+			margin: 1.25rem 0 0.5rem;
+			color: var(--text-primary);
+		}
+
+		.modal-body p {
+			margin-bottom: 1rem;
+			color: var(--text-secondary);
+		}
+
+		.modal-body blockquote {
+			border-left: 4px solid var(--accent);
+			background: var(--code-bg);
+			padding: 0.75rem 1rem;
+			border-radius: 0 8px 8px 0;
+			margin: 1rem 0;
+			color: var(--text-secondary);
+			font-style: italic;
+		}
+
+		.modal-body pre {
+			background: var(--code-bg);
+			border: 1px solid var(--border-color);
+			padding: 1rem;
+			border-radius: 8px;
+			overflow-x: auto;
+			margin: 1rem 0;
+			font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+			font-size: 0.88rem;
+			color: var(--text-primary);
+		}
+
+		.modal-body code {
+			font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+			background: var(--code-bg);
+			padding: 0.15rem 0.35rem;
+			border-radius: 4px;
+			font-size: 0.88em;
+			color: var(--accent);
+		}
+
+		.modal-body pre code {
+			background: transparent;
+			padding: 0;
+			color: inherit;
+		}
+
+		.modal-body ul, .modal-body ol {
+			margin: 0.75rem 0 1rem 1.5rem;
+			color: var(--text-secondary);
+		}
+
+		.modal-body li {
+			margin-bottom: 0.35rem;
+		}
+
+		/* Footer */
+		footer {
+			margin-top: auto;
+			border-top: 1px solid var(--border-color);
+			background: var(--bg-card);
+			padding: 1.5rem 1rem;
+			text-align: center;
+			font-size: 0.85rem;
+			color: var(--text-muted);
+		}
+
+		.footer-links {
+			margin-bottom: 0.5rem;
+			display: flex;
+			justify-content: center;
+			gap: 1.25rem;
+		}
+
+		.footer-link {
+			color: var(--text-secondary);
+			text-decoration: none;
+			transition: color 0.2s;
+		}
+
+		.footer-link:hover {
+			color: var(--accent);
+		}
+
+		/* Responsive */
+		@media (max-width: 860px) {
+			.main-wrapper {
+				grid-template-columns: 1fr;
+			}
+			.sidebar {
+				position: static;
+			}
 		}
 	</style>
-	</head>
-	<body>
-	<h1>Welcome to nginx!</h1>
-	<p>If you see this page, the nginx web server is successfully installed and
-	working. Further configuration is required.</p>
+</head>
+<body>
+	<!-- Header -->
+	<header>
+		<div class="header-container">
+			<a href="#" class="brand">
+				<svg class="brand-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+					<path d="M12 2L7 9h4l-3 6h4l-4 5h8l-4-5h4l-3-6h4z"/>
+					<path d="M12 18v4"/>
+				</svg>
+				<span>DaTree's Blog</span>
+			</a>
+			<div class="nav-actions">
+				<a href="#" class="nav-link">首页</a>
+				<a href="#about" class="nav-link">关于</a>
+				<button class="theme-toggle-btn" id="theme-toggle" title="切换暗黑/浅色模式">
+					<svg id="theme-icon-sun" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none;">
+						<circle cx="12" cy="12" r="5"></circle>
+						<line x1="12" y1="1" x2="12" y2="3"></line>
+						<line x1="12" y1="21" x2="12" y2="23"></line>
+						<line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+						<line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+						<line x1="1" y1="12" x2="3" y2="12"></line>
+						<line x1="21" y1="12" x2="23" y2="12"></line>
+						<line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+						<line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+					</svg>
+					<svg id="theme-icon-moon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+						<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+					</svg>
+				</button>
+			</div>
+		</div>
+	</header>
 
-	<p>For online documentation and support please refer to
-	<a href="http://nginx.org/">nginx.org</a>.<br/>
-	Commercial support is available at
-	<a href="http://nginx.com/">nginx.com</a>.</p>
+	<!-- Main -->
+	<main class="main-wrapper">
+		<!-- Sidebar Profile -->
+		<aside class="sidebar" id="about">
+			<div class="avatar-wrapper">
+				<div class="avatar-inner">
+					<svg class="avatar-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+						<path d="M12 22v-7l-4-4"/>
+						<path d="M12 15l4-4"/>
+						<path d="M12 3a6 6 0 0 0-6 6c0 3 2 4.5 3 6h6c1-1.5 3-3 3-6a6 6 0 0 0-6-6z"/>
+					</svg>
+				</div>
+			</div>
+			<h2 class="author-name">DaTree</h2>
+			<p class="author-subtitle">枝繁叶茂，静水深流</p>
+			<p class="author-bio">全栈开发者 &amp; 系统架构探索者。专注于云原生轻量计算、现代网络协议与高性能服务工程。信奉简单、直观且健壮的架构设计理念。</p>
+			
+			<div class="author-stats">
+				<div class="stat-item">
+					<span class="stat-num">12</span>
+					<span class="stat-label">博文</span>
+				</div>
+				<div class="stat-item">
+					<span class="stat-num">4</span>
+					<span class="stat-label">开源项目</span>
+				</div>
+				<div class="stat-item">
+					<span class="stat-num">98k</span>
+					<span class="stat-label">浏览</span>
+				</div>
+			</div>
 
-	<p><em>Thank you for using nginx.</em></p>
-	</body>
-	</html>
-	`
+			<div class="tech-tags">
+				<span class="tag-pill">Cloudflare</span>
+				<span class="tag-pill">Go</span>
+				<span class="tag-pill">Node.js</span>
+				<span class="tag-pill">QUIC</span>
+				<span class="tag-pill">Serverless</span>
+				<span class="tag-pill">Distributed</span>
+			</div>
+		</aside>
+
+		<!-- Content Section -->
+		<section class="content-area">
+			<!-- Toolbar -->
+			<div class="toolbar">
+				<div class="search-input-wrapper">
+					<svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+						<circle cx="11" cy="11" r="8"></circle>
+						<line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+					</svg>
+					<input type="text" id="search-input" class="search-input" placeholder="搜索文章标题、摘要或标签...">
+				</div>
+				<div class="filter-chips">
+					<button class="filter-chip active" data-category="all">全部文章</button>
+					<button class="filter-chip" data-category="云原生">云原生</button>
+					<button class="filter-chip" data-category="网络协议">网络协议</button>
+					<button class="filter-chip" data-category="开发思考">开发思考</button>
+					<button class="filter-chip" data-category="架构设计">架构设计</button>
+				</div>
+			</div>
+
+			<!-- Articles List -->
+			<div class="articles-list" id="articles-container"></div>
+			<div class="no-match" id="no-match-box">暂无匹配的文章内容，换个关键词试试吧。</div>
+		</section>
+	</main>
+
+	<!-- Footer -->
+	<footer>
+		<div class="footer-links">
+			<a href="#" class="footer-link">首页</a>
+			<a href="#about" class="footer-link">关于 DaTree</a>
+			<a href="#" class="footer-link">RSS 订阅</a>
+			<a href="#" class="footer-link">安全与隐私</a>
+		</div>
+		<p>&copy; 2026 DaTree. All rights reserved. Powered by DaTree Static Engine.</p>
+	</footer>
+
+	<!-- Reader Modal -->
+	<div class="reader-modal" id="reader-modal">
+		<div class="modal-container">
+			<div class="modal-header">
+				<div class="modal-title-group">
+					<span class="modal-category" id="modal-category"></span>
+					<div class="modal-meta" id="modal-meta"></div>
+				</div>
+				<button class="modal-close-btn" id="modal-close-btn" title="关闭 (Esc)">
+					<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+						<line x1="18" y1="6" x2="6" y2="18"></line>
+						<line x1="6" y1="6" x2="18" y2="18"></line>
+					</svg>
+				</button>
+			</div>
+			<div class="modal-body" id="modal-body"></div>
+		</div>
+	</div>
+
+	<!-- Script -->
+	<script>
+		var articles = [
+			{
+				id: 'edge-computing',
+				title: '深入浅出边缘计算：在 Serverless 时代重构全球应用分发',
+				category: '云原生',
+				date: '2026-09-18',
+				readTime: '8 min read',
+				tags: ['Serverless', 'Edge Computing', 'Cloudflare Workers'],
+				summary: '随着全球分布式边缘节点计算能力的爆发，传统的中心化云计算架构正逐步向就近计算演进。本文结合实际生产实践，探讨冷启动优化、无状态数据流与全球自愈容灾策略。',
+				content: '<h1>深入浅出边缘计算：在 Serverless 时代重构全球应用分发</h1><p>近年来，以边缘计算（Edge Computing）和 Serverless 轻量级沙箱环境为代表的计算范式正在深刻改变现代网络应用的交付形态。不再是传统的“客户端 -> 全球 CDN -> 中心原站”的三级链路，现代计算直接在距离用户数十毫秒以内的边缘 PoP 点就近执行。</p><h2>1. 传统中心化云时代的延迟困境</h2><p>在过去，即使使用了 CDN 缓存静态资源，动态 API 请求依旧需要跋山涉水回到中心数据中心。跨洋跨大洲的物理光纤传输延迟（RTT 通常在 150ms~300ms 之间）成为了实时应用的天花板。此外，多层反向代理与 TLS 握手的级联累加，使得首次交互成本居高不下。</p><blockquote>“将计算推向边缘，本质上是将代码逻辑作为就近缓存的一部分，消除无谓的网络往返。”</blockquote><h2>2. V8 Isolate 沙箱与毫秒级冷启动</h2><p>不同于传统基于 Docker 容器或全虚拟化虚拟机的秒级甚至数十秒启动开销，现代边缘运行时（如 Cloudflare Workers、Deno Deploy）基于 Google V8 的 Isolate 机制。数千个轻量租户可以安全地在同一个操作系统进程中并发运行，内存占用仅为数兆字节，冷启动时间缩减至 5 毫秒以内。</p><pre><code>// 边缘流式请求代理与快速检查\\nexport default {\\n    async fetch(request, env, ctx) {\\n        const clientIp = request.headers.get(\\'CF-Connecting-IP\\');\\n        const country = request.cf?.country || \\'US\\';\\n        if (isBlockedRegion(country)) {\\n            return new Response(\\'Access Restricted\\', { status: 403 });\\n        }\\n        return fetch(targetOrigin, { headers: request.headers });\\n    }\\n};</code></pre><h2>3. 数据就近访问与最终一致性</h2><p>在边缘场景中，最大的挑战往往不是计算本身，而是状态与数据的一致性。边缘分布式 KV、Durable Objects 以及轻量级 SQLite 数据库为不同一致性要求的业务提供了阶梯式的解决方案。对于读多写少的元数据，全球复制与毫秒级边缘读取是最佳匹配。</p><h2>4. 思考与未来展望</h2><p>边缘并不是要完全取代中心云，而是与中心云形成互补。重度批处理、复杂训练依然停留在中心；而身份认证、路由调度、流式网关和首屏组装，则全部在边缘完成。这就是现代分布式系统的优雅演进路线。</p>'
+			},
+			{
+				id: 'network-protocols',
+				title: '现代网络协议演进笔记：从 TCP、TLS 1.3 到 QUIC 与 HTTP/3',
+				category: '网络协议',
+				date: '2026-08-25',
+				readTime: '12 min read',
+				tags: ['QUIC', 'HTTP/3', 'TCP', 'Network Architecture'],
+				summary: 'HTTP/3 彻底告别了服役数十年的 TCP 传输层，转而全面拥抱基于 UDP 的 QUIC 协议。队头阻塞问题是如何彻底被攻克的？0-RTT 握手与连接迁移又是怎样实现的？',
+				content: '<h1>现代网络协议演进笔记：从 TCP、TLS 1.3 到 QUIC 与 HTTP/3</h1><p>网络协议的演进史，就是一部与延迟和不可靠网络抗争的历史。从 1980 年代 TCP/IP 协议栈确立，到 HTTP/1.1、HTTP/2，再到如今广泛部署的 HTTP/3，协议层面的创新正在释放极速体验。</p><h2>1. HTTP/2 的功绩与遗留的“队头阻塞”</h2><p>HTTP/2 引入了二进制分帧与单连接多路复用（Multiplexing），解决了 HTTP 层面的队头阻塞。然而，因为底层依然是 TCP 协议，当底层发生丢包时，整个 TCP 连接上的所有数据流都必须暂停等待重传，这反而在高丢包率的弱网环境下造成了“TCP 队头阻塞”。</p><h2>2. QUIC：在 UDP 之上重构可靠传输</h2><p>为了绕过操作系统内核对 TCP 协议的固化僵局，IETF 选择了在用户空间基于 UDP 构建 QUIC 协议：</p><ul><li><strong>独立数据流控制</strong>：每个流拥有独立的序号与滑动窗口，单流丢包绝不影响其他并发流；</li><li><strong>内置 TLS 1.3 加密</strong>：传输参数协商与密钥协商合二为一，消除握手往返；</li><li><strong>连接迁移（Connection Migration）</strong>：使用 Connection ID 代替传统的 IP+端口四元组标识，当移动设备从 Wi-Fi 切换到 5G 基站时，无需断开重连。</li></ul><pre><code>// 概念示意：QUIC 帧的多路并发调度\\n+------------------------------------------------------+\\n| QUIC Packet (Header + ConnID)                        |\\n|  +--------------------+  +-------------------------+ |\\n|  | Stream 4: Frame 0  |  | Stream 8: Frame 1 (ACK) | |\\n|  +--------------------+  +-------------------------+ |\\n+------------------------------------------------------+</code></pre><h2>3. 实践体会</h2><p>在公网复杂多变的环境下，QUIC 对弱网和高丢包场景的改善非常显著。尤其是在移动端和全球长链路访问场景中，首屏建连与首字展示时间能够提升 30% 以上。深入理解协议细节，是每一个系统工程师的必修功课。</p>'
+			},
+			{
+				id: 'simple-engineering',
+				title: '以简驭繁：工程实践中的“减法设计”哲学',
+				category: '开发思考',
+				date: '2026-07-12',
+				readTime: '6 min read',
+				tags: ['Engineering', 'Philosophy', 'Architecture', 'Clean Code'],
+				summary: '过早优化与过度抽象是软件工程复杂度的两大根源。我们常常在构建我们并不需要的扩展点。本文记录在多个大型系统演进过程中，通过持续做减法获得的稳定性和敏捷性。',
+				content: '<h1>以简驭繁：工程实践中的“减法设计”哲学</h1><p>“代码是负债，而不是资产。”每新增一行代码，就意味着未来多了一处需要维护、重构、排查故障的潜在风险点。在软件工程中，最容易被忽视却最珍贵的能力，其实是<strong>做减法</strong>的能力。</p><h2>1. 警惕“过早抽象”的陷阱</h2><p>许多项目在一开始就引入了复杂的工厂模式、繁琐的依赖注入容器和五花八门的设计模式，试图预测未来三年的业务变化。但现实是，未来的需求往往以一种未曾预料的方式到来，过早抽象不仅不能适配新需求，反而成了重构的绊脚石。</p><blockquote>“三个相似用例出现之前，不要急于抽象。重复代码的代价，远小于错误抽象的代价。”</blockquote><h2>2. YAGNI 原则与精简依赖</h2><p>YAGNI（You Aren\\'t Gonna Need It）是每个程序员应该贴在显示器上的警句：</p><ul><li>不引入仅为了一两个小函数的重型第三方依赖库；</li><li>优先使用原生语言特性与标准库实现；</li><li>精简配置项：每增加一个配置开关，系统的状态空间就膨胀一倍。</li></ul><h2>3. 编写让人能够一眼看懂的代码</h2><p>最健壮的代码往往是平铺直叙、心智负担最小的代码。当一个模块的职责边界足够清晰、函数输入输出纯粹时，测试、部署与故障排查都会变得极为轻松。保持简单，不仅是对队友的尊重，也是对未来的自己最好的关照。</p>'
+			},
+			{
+				id: 'high-availability',
+				title: '高可用服务设计：容灾兜底、健康探测与毫秒级自愈机制',
+				category: '架构设计',
+				date: '2026-05-30',
+				readTime: '10 min read',
+				tags: ['High Availability', 'Failover', 'Resilience', 'TCP'],
+				summary: '在复杂不可靠的公网环境中，单点故障是必然发生的常态。如何设计非阻塞的快速探测机制、多级备用候选队列以及自动退避与恢复？',
+				content: '<h1>高可用服务设计：容灾兜底、健康探测与毫秒级自愈机制</h1><p>墨菲定律告诉我们：“如果事情有变坏的可能，不管这种可能性有多小，它总会发生。”在分布式网络网关和代理系统中，后端节点断流、机房网络波动、端口阻塞屡见不鲜。构建高可用系统的核心，不是假设节点永不宕机，而是接受故障的必然性，并设计好无感的容灾自愈流程。</p><h2>1. 快速失败（Fast-Fail）优于漫长挂起</h2><p>许多服务故障并不是因为服务器宕机，而是因为线程池被缓慢的超时连接全部占满。因此，将探测超时从默认的数十秒缩短为毫秒级（如 800ms~1500ms），并在探测超时后立即触发级联回退，是保护整个系统免遭雪崩的关键。</p><h2>2. 多级候选队列与有序回退</h2><p>当首选出口出现网络抖动时，系统应当自动从就近备用池（Failover Pool）中提取健康的替补节点，而不是直接向客户端抛出 502/504 错误。通过打乱保底池并建立轻量健康标记，可以实现真正的静默自愈。</p><pre><code>// 级联自愈重试示意\\nasync function dialWithCascade(candidates, timeoutMs = 1000) {\\n    for (const node of candidates) {\\n        try {\\n            return await tryConnect(node, timeoutMs);\\n        } catch (err) {\\n            console.warn(\\'节点探测失败，自动尝试下一个候选:\\', node);\\n        }\\n    }\\n    throw new Error(\\'所有备用节点均不可达\\');\\n}</code></pre><h2>3. 总结</h2><p>高可用不是靠昂贵的硬件堆砌出来的，而是融入在对每一次连接超时的敬畏、每一个异常捕获的处理逻辑之中。在设计阶段将故障作为输入，系统才能在风暴中屹立不倒。</p>'
+			}
+		];
+
+		var articlesContainer = document.getElementById('articles-container');
+		var noMatchBox = document.getElementById('no-match-box');
+		var searchInput = document.getElementById('search-input');
+		var filterChips = document.querySelectorAll('.filter-chip');
+		var themeToggle = document.getElementById('theme-toggle');
+		var sunIcon = document.getElementById('theme-icon-sun');
+		var moonIcon = document.getElementById('theme-icon-moon');
+		var modal = document.getElementById('reader-modal');
+		var modalCloseBtn = document.getElementById('modal-close-btn');
+		var modalBody = document.getElementById('modal-body');
+		var modalCategory = document.getElementById('modal-category');
+		var modalMeta = document.getElementById('modal-meta');
+
+		var currentCategory = 'all';
+		var searchQuery = '';
+
+		function renderArticles() {
+			var filtered = articles.filter(function(art) {
+				var matchesCat = currentCategory === 'all' || art.category === currentCategory;
+				var q = searchQuery.toLowerCase().trim();
+				var matchesSearch = !q || art.title.toLowerCase().indexOf(q) !== -1 || art.summary.toLowerCase().indexOf(q) !== -1 || art.tags.some(function(t) { return t.toLowerCase().indexOf(q) !== -1; });
+				return matchesCat && matchesSearch;
+			});
+
+			if (filtered.length === 0) {
+				articlesContainer.innerHTML = '';
+				noMatchBox.style.display = 'block';
+				return;
+			}
+
+			noMatchBox.style.display = 'none';
+			articlesContainer.innerHTML = filtered.map(function(art) {
+				var tagsHtml = art.tags.map(function(t) { return '<span class="article-tag">#' + t + '</span>'; }).join('');
+				return '<article class="article-card" onclick="openArticle(\\'' + art.id + '\\')">' +
+					'<div class="article-header">' +
+						'<span class="article-category">' + art.category + '</span>' +
+						'<div class="article-meta">' +
+							'<span>' + art.date + '</span>' +
+							'<span>•</span>' +
+							'<span>' + art.readTime + '</span>' +
+						'</div>' +
+					'</div>' +
+					'<h3 class="article-title">' + art.title + '</h3>' +
+					'<p class="article-summary">' + art.summary + '</p>' +
+					'<div class="article-footer">' +
+						'<div class="article-tags">' + tagsHtml + '</div>' +
+						'<button class="read-more-btn" onclick="event.stopPropagation(); openArticle(\\'' + art.id + '\\')">' +
+							'阅读全文' +
+							'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">' +
+								'<line x1="5" y1="12" x2="19" y2="12"></line>' +
+								'<polyline points="12 5 19 12 12 19"></polyline>' +
+							'</svg>' +
+						'</button>' +
+					'</div>' +
+				'</article>';
+			}).join('');
+		}
+
+		window.openArticle = function(id) {
+			var art = articles.find(function(a) { return a.id === id; });
+			if (!art) return;
+			modalCategory.textContent = art.category;
+			modalMeta.innerHTML = '<span>' + art.date + '</span><span>•</span><span>' + art.readTime + '</span><span>•</span><span>作者: DaTree</span>';
+			modalBody.innerHTML = art.content;
+			modal.classList.add('open');
+			document.body.style.overflow = 'hidden';
+			window.location.hash = art.id;
+		};
+
+		function closeModal() {
+			modal.classList.remove('open');
+			document.body.style.overflow = '';
+			if (window.location.hash) {
+				history.pushState('', document.title, window.location.pathname + window.location.search);
+			}
+		}
+
+		modalCloseBtn.addEventListener('click', closeModal);
+		modal.addEventListener('click', function(e) {
+			if (e.target === modal) closeModal();
+		});
+		window.addEventListener('keydown', function(e) {
+			if (e.key === 'Escape' && modal.classList.contains('open')) closeModal();
+		});
+
+		function checkHash() {
+			var hash = window.location.hash.replace('#', '');
+			if (hash && articles.some(function(a) { return a.id === hash; })) {
+				openArticle(hash);
+			}
+		}
+
+		searchInput.addEventListener('input', function(e) {
+			searchQuery = e.target.value;
+			renderArticles();
+		});
+
+		filterChips.forEach(function(chip) {
+			chip.addEventListener('click', function() {
+				filterChips.forEach(function(c) { c.classList.remove('active'); });
+				chip.classList.add('active');
+				currentCategory = chip.dataset.category;
+				renderArticles();
+			});
+		});
+
+		function initTheme() {
+			var saved = localStorage.getItem('datree_theme');
+			var prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+			var isDark = saved === 'dark' || (!saved && prefersDark);
+			setTheme(isDark);
+		}
+
+		function setTheme(isDark) {
+			if (isDark) {
+				document.documentElement.setAttribute('data-theme', 'dark');
+				sunIcon.style.display = 'block';
+				moonIcon.style.display = 'none';
+				localStorage.setItem('datree_theme', 'dark');
+			} else {
+				document.documentElement.removeAttribute('data-theme');
+				sunIcon.style.display = 'none';
+				moonIcon.style.display = 'block';
+				localStorage.setItem('datree_theme', 'light');
+			}
+		}
+
+		themeToggle.addEventListener('click', function() {
+			var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+			setTheme(!isDark);
+		});
+
+		initTheme();
+		renderArticles();
+		checkHash();
+	</script>
+</body>
+</html>`;
 }
 
 async function html1101(host, 访问IP) {
