@@ -80,7 +80,7 @@ async function 带超时打开TCP连接(TCP连接, address, port, 超时毫秒 =
 	}
 }
 
-export { 美区高可用备用热池, 打乱数组, 获取出口反代候选队列, 带超时打开TCP连接 };
+export { 美区高可用备用热池, 打乱数组, 获取出口反代候选队列, 带超时打开TCP连接, 增强管理后台HTML, 增强ProxyIPSection };
 ///////////////////////////////////////////////////////主程序入口///////////////////////////////////////////////
 export default {
 	async fetch(request, env, ctx) {
@@ -6100,15 +6100,163 @@ async function 整理成数组(内容) {
 	return 地址数组;
 }
 
+function 增强ProxyIPSection(html) {
+	if (!html || typeof html !== 'string' || !html.includes('id="autoProxy"')) return html;
+	if (html.includes('id="proxyCountrySelect"')) return html;
+
+	const countrySelectHtml = `
+	<div id="proxyCountryWrapper" style="display: inline-flex; align-items: center; gap: 6px; margin-left: 10px;">
+		<label for="proxyCountrySelect" style="font-size: 13px; color: #9ca3af;">🏳️ 落地国家:</label>
+		<select id="proxyCountrySelect" class="form-select-sm" style="padding: 4px 8px; border-radius: 6px; font-size: 13px; background: rgba(255,255,255,0.08); color: #fff; border: 1px solid rgba(156,163,175,0.3);" onchange="markModified('proxy')">
+			<option value="US" selected>🇺🇸 美国 (US)</option>
+			<option value="auto">🌐 任意 (就近)</option>
+			<option value="GB">🇬🇧 英国 (GB)</option>
+			<option value="JP">🇯🇵 日本 (JP)</option>
+			<option value="SG">🇸🇬 新加坡 (SG)</option>
+			<option value="HK">🇭🇰 香港 (HK)</option>
+		</select>
+	</div>
+	<script>
+	(function() {
+		function syncProxyCountryUI() {
+			const sel = document.getElementById('proxyCountrySelect');
+			const auto = document.getElementById('autoProxy');
+			if (sel) {
+				let targetVal = 'US';
+				if (window.currentConfig && window.currentConfig.反代 && window.currentConfig.反代.PROXYIP_COUNTRY) {
+					const raw = String(window.currentConfig.反代.PROXYIP_COUNTRY).trim();
+					targetVal = (raw.toLowerCase() === 'auto') ? 'auto' : raw.toUpperCase();
+				}
+				let optionExists = false;
+				for (let i = 0; i < sel.options.length; i++) {
+					if (sel.options[i].value === targetVal) {
+						optionExists = true;
+						break;
+					}
+				}
+				sel.value = optionExists ? targetVal : 'US';
+				if (auto) {
+					sel.disabled = !auto.checked;
+				}
+			}
+		}
+
+		function initProxyCountryHooks() {
+			const auto = document.getElementById('autoProxy');
+			const sel = document.getElementById('proxyCountrySelect');
+			if (auto && sel) {
+				sel.disabled = !auto.checked;
+				if (!auto.__countryBound) {
+					auto.addEventListener('change', function() {
+						sel.disabled = !this.checked;
+					});
+					auto.__countryBound = true;
+				}
+			}
+
+			if (typeof window.toggleAutoProxy === 'function' && !window.toggleAutoProxy.__countryHooked) {
+				const origToggle = window.toggleAutoProxy;
+				window.toggleAutoProxy = function() {
+					const res = origToggle.apply(this, arguments);
+					if (auto && sel) sel.disabled = !auto.checked;
+					return res;
+				};
+				window.toggleAutoProxy.__countryHooked = true;
+			}
+
+			if (typeof window.renderUI === 'function' && !window.renderUI.__countryHooked) {
+				const origRender = window.renderUI;
+				window.renderUI = function() {
+					const res = origRender.apply(this, arguments);
+					syncProxyCountryUI();
+					return res;
+				};
+				window.renderUI.__countryHooked = true;
+			}
+
+			if (typeof window.applyProxyConfigToForm === 'function' && !window.applyProxyConfigToForm.__countryHooked) {
+				const origApply = window.applyProxyConfigToForm;
+				window.applyProxyConfigToForm = function() {
+					const res = origApply.apply(this, arguments);
+					syncProxyCountryUI();
+					return res;
+				};
+				window.applyProxyConfigToForm.__countryHooked = true;
+			}
+
+			if (typeof window.saveConfigToServer === 'function' && !window.saveConfigToServer.__countryHooked) {
+				const origSaveConfig = window.saveConfigToServer;
+				window.saveConfigToServer = async function(section) {
+					if (section === 'proxy') {
+						if (sel) {
+							if (!window.currentConfig) window.currentConfig = {};
+							if (!window.currentConfig.反代) window.currentConfig.反代 = {};
+							window.currentConfig.反代.PROXYIP_COUNTRY = sel.value || 'US';
+						}
+					}
+					return origSaveConfig.apply(this, arguments);
+				};
+				window.saveConfigToServer.__countryHooked = true;
+			}
+
+			if (typeof window.saveProxy === 'function' && !window.saveProxy.__countryHooked) {
+				const origSaveProxy = window.saveProxy;
+				window.saveProxy = async function() {
+					if (sel) {
+						if (!window.currentConfig) window.currentConfig = {};
+						if (!window.currentConfig.反代) window.currentConfig.反代 = {};
+						window.currentConfig.反代.PROXYIP_COUNTRY = sel.value || 'US';
+					}
+					return origSaveProxy.apply(this, arguments);
+				};
+				window.saveProxy.__countryHooked = true;
+			}
+
+			if (window.currentConfig && window.currentConfig.反代) {
+				syncProxyCountryUI();
+			}
+		}
+
+		if (document.readyState === 'loading') {
+			document.addEventListener('DOMContentLoaded', initProxyCountryHooks);
+		} else {
+			initProxyCountryHooks();
+		}
+		let timer = null;
+		timer = setInterval(function() {
+			initProxyCountryHooks();
+			if (window.renderUI && window.renderUI.__countryHooked &&
+				window.saveConfigToServer && window.saveConfigToServer.__countryHooked &&
+				window.toggleAutoProxy && window.toggleAutoProxy.__countryHooked) {
+				if (timer) clearInterval(timer);
+			}
+		}, 50);
+		setTimeout(function() { if (timer) clearInterval(timer); }, 5000);
+	})();
+	</script>`;
+
+	const needle = `<label for="autoProxy" class="checkbox-label"
+					title="启用自动获取: 使用默认内置的PROXYIP">启用自动获取</label>`;
+	const fallbackNeedle = `<label for="autoProxy" class="checkbox-label" title="启用自动获取: 使用默认内置的PROXYIP">启用自动获取</label>`;
+	const regexNeedle = /<label\s+for="autoProxy"[^>]*>[\s\S]*?启用自动获取[\s\S]*?<\/label>/i;
+
+	if (html.includes(needle)) {
+		return html.replace(needle, needle + countrySelectHtml);
+	} else if (html.includes(fallbackNeedle)) {
+		return html.replace(fallbackNeedle, fallbackNeedle + countrySelectHtml);
+	} else if (regexNeedle.test(html)) {
+		return html.replace(regexNeedle, '$&' + countrySelectHtml);
+	}
+	return html;
+}
+
 function 增强管理后台HTML(html) {
 	if (!html || typeof html !== 'string') return html;
 	const targetSection = '<div id="generatorSection" class="form-group hidden-section">';
 	const idx = html.indexOf(targetSection);
-	if (idx === -1) return html;
-	const endIdx = html.indexOf('</div>', idx + targetSection.length);
-	if (endIdx === -1) return html;
-
-	const replacement = `<div id="generatorSection" class="form-group hidden-section">
+	const endIdx = idx === -1 ? -1 : html.indexOf('</div>', idx + targetSection.length);
+	if (idx !== -1 && endIdx !== -1) {
+		const replacement = `<div id="generatorSection" class="form-group hidden-section">
 						<style>
 							@keyframes genSpin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 							.gen-spin { display: inline-block; animation: genSpin 1s linear infinite; }
@@ -6657,7 +6805,11 @@ function 增强管理后台HTML(html) {
 					})();
 					</script>`;
 
-	return html.substring(0, idx) + replacement + html.substring(endIdx + 6);
+		html = html.substring(0, idx) + replacement + html.substring(endIdx + 6);
+	}
+
+	html = 增强ProxyIPSection(html);
+	return html;
 }
 
 async function 获取单个优选订阅生成器数据(hostItem, uid = "000000") {
