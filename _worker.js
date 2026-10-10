@@ -80,7 +80,7 @@ async function 带超时打开TCP连接(TCP连接, address, port, 超时毫秒 =
 	}
 }
 
-export { 美区高可用备用热池, 打乱数组, 获取出口反代候选队列, 带超时打开TCP连接, 增强管理后台HTML, 增强ProxyIPSection };
+export { 美区高可用备用热池, 打乱数组, 获取出口反代候选队列, 带超时打开TCP连接, 增强管理后台HTML, 增强ProxyIPSection, 读取config_JSON };
 ///////////////////////////////////////////////////////主程序入口///////////////////////////////////////////////
 export default {
 	async fetch(request, env, ctx) {
@@ -5832,6 +5832,7 @@ async function 读取config_JSON(env, hostname, userID, UA = "Mozilla/5.0", 重�
 		},
 		反代: {
 			[_p]: "auto",
+			PROXYIP_COUNTRY: "US",
 			SOCKS5: {
 				启用: null,
 				全局: false,
@@ -5896,6 +5897,7 @@ async function 读取config_JSON(env, hostname, userID, UA = "Mozilla/5.0", 重�
 		config_JSON = 默认配置JSON;
 	}
 
+	if (!config_JSON.订阅转换配置) config_JSON.订阅转换配置 = { ...默认配置JSON.订阅转换配置 };
 	if (!config_JSON.订阅转换配置.SUBLIST) config_JSON.订阅转换配置.SUBLIST = false;
 	if (!config_JSON.订阅转换配置.UDP) config_JSON.订阅转换配置.UDP = false;
 	if (!config_JSON.订阅转换配置.XUDP) config_JSON.订阅转换配置.XUDP = false;
@@ -5917,6 +5919,10 @@ async function 读取config_JSON(env, hostname, userID, UA = "Mozilla/5.0", 重�
 
 	if (!config_JSON.gRPC模式) config_JSON.gRPC模式 = 'gun';
 	if (!config_JSON.SS) config_JSON.SS = { 加密方式: "aes-128-gcm", TLS: false };
+
+	if (!config_JSON.反代) config_JSON.反代 = {};
+	if (!config_JSON.反代.PROXYIP_COUNTRY) config_JSON.反代.PROXYIP_COUNTRY = "US";
+	if (!config_JSON.反代.SOCKS5) config_JSON.反代.SOCKS5 = { 启用: null, 全局: false, 账号: '', 白名单: SOCKS5白名单 };
 
 	if (!config_JSON.反代.路径模板?.[_p]) {
 		config_JSON.反代.路径模板 = {
@@ -5947,10 +5953,10 @@ async function 读取config_JSON(env, hostname, userID, UA = "Mozilla/5.0", 重�
 	if (!config_JSON.反代.路径模板.TURN) config_JSON.反代.路径模板.TURN = { 全局: "turn://" + 占位符, 标准: "turn=" + 占位符 };
 	if (!config_JSON.反代.路径模板.SSTP) config_JSON.反代.路径模板.SSTP = { 全局: "sstp://" + 占位符, 标准: "sstp=" + 占位符 };
 
-	const 代理配置 = config_JSON.反代.路径模板[config_JSON.反代.SOCKS5.启用?.toUpperCase()];
+	const 代理配置 = config_JSON.反代.路径模板[config_JSON.反代.SOCKS5?.启用?.toUpperCase()];
 
 	let 路径反代参数 = '';
-	if (代理配置 && config_JSON.反代.SOCKS5.账号) 路径反代参数 = (config_JSON.反代.SOCKS5.全局 ? 代理配置.全局 : 代理配置.标准).replace(占位符, config_JSON.反代.SOCKS5.账号);
+	if (代理配置 && config_JSON.反代.SOCKS5?.账号) 路径反代参数 = (config_JSON.反代.SOCKS5.全局 ? 代理配置.全局 : 代理配置.标准).replace(占位符, config_JSON.反代.SOCKS5.账号);
 	else if (config_JSON.反代[_p] !== 'auto') 路径反代参数 = config_JSON.反代.路径模板[_p].replace(占位符, config_JSON.反代[_p]);
 
 	let 反代查询参数 = '';
@@ -5973,6 +5979,7 @@ async function 读取config_JSON(env, hostname, userID, UA = "Mozilla/5.0", 重�
 	if (!config_JSON.ECH) config_JSON.ECH = false;
 	if (!config_JSON.ECHConfig) config_JSON.ECHConfig = { DNS: Ali_DoH, SNI: ECH_SNI };
 	const ECHLINK参数 = config_JSON.ECH ? `&ech=${encodeURIComponent((config_JSON.ECHConfig.SNI ? config_JSON.ECHConfig.SNI + '+' : '') + config_JSON.ECHConfig.DNS)}` : '';
+	if (!config_JSON.优选订阅生成) config_JSON.优选订阅生成 = { ...默认配置JSON.优选订阅生成 };
 	const { type: 传输协议, 路径字段名, 域名字段名 } = 获取传输协议配置(config_JSON);
 	const 传输路径参数值 = 获取传输路径参数值(config_JSON, config_JSON.完整节点路径);
 	config_JSON.LINK = config_JSON.协议类型 === 'ss'
@@ -5981,7 +5988,7 @@ async function 读取config_JSON(env, hostname, userID, UA = "Mozilla/5.0", 重�
 	config_JSON.优选订阅生成.TOKEN = await MD5MD5(hostname + userID);
 
 	const 初始化TG_JSON = { BotToken: null, ChatID: null };
-	config_JSON.TG = { 启用: config_JSON.TG.启用 ? config_JSON.TG.启用 : false, ...初始化TG_JSON };
+	config_JSON.TG = { 启用: config_JSON.TG?.启用 ? config_JSON.TG.启用 : false, ...初始化TG_JSON };
 	try {
 		const TG_TXT = await env.KV.get('tg.json');
 		if (!TG_TXT) {
