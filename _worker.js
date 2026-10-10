@@ -15,6 +15,48 @@ const 特征码字典 = [
 	String(2407 * 300 - 10).split('').reverse().join('')
 ];
 const 汇聚订阅_UA = 'v2rayN/edge' + 'tunnel (https://github.com/' + 特征码字典[1] + '/edge' + 'tunnel)';
+///////////////////////////////////////////////////////美区高可用备用热池与出口路由///////////////////////////////////////////////
+const 美区高可用备用热池 = [
+	"192.9.157.76:443",   // Santa Clara (Oracle)
+	"206.223.84.247:443",  // Los Angeles (NetLab)
+	"113.20.6.129:443",    // Los Angeles (Multacom)
+	"64.227.109.151:443",  // Santa Clara (DigitalOcean)
+	"43.153.78.145:443",   // Santa Clara (Tencent Cloud US)
+	"138.2.236.17:443",    // Santa Clara (Oracle)
+	"45.32.67.85:443",     // Los Angeles (Vultr)
+	"38.180.204.104:443"   // Chicago (HIVELOCITY)
+];
+
+function 打乱数组(arr) {
+	const res = [...arr];
+	for (let i = res.length - 1; i > 0; i--) {
+		const j = Math.floor(Math.random() * (i + 1));
+		[res[i], res[j]] = [res[j], res[i]];
+	}
+	return res;
+}
+
+function 获取出口反代候选队列(request, env, ctx反代IP, cfg = null, asArray = false) {
+	if (ctx反代IP && ctx反代IP !== 'auto') {
+		return asArray ? (Array.isArray(ctx反代IP) ? ctx反代IP : [ctx反代IP]) : (Array.isArray(ctx反代IP) ? ctx反代IP.join(',') : ctx反代IP);
+	}
+	const cfg反代 = cfg?.反代 || config_JSON?.反代 || {};
+	const isAuto = (cfg反代.PROXYIP === 'auto' || !cfg反代.PROXYIP) && (env?.PROXYIP === 'auto' || !env?.PROXYIP);
+	const country = (cfg反代.PROXYIP_COUNTRY || env?.PROXYIP_COUNTRY || 'US').toUpperCase();
+
+	if (isAuto && country !== 'AUTO') {
+		const dynamicDomain = `${country.toLowerCase()}.${特征码字典[0].toLowerCase()}.${特征码字典[1]}ssss.net`;
+		const staticBackup = 美区高可用备用热池;
+		const queue = [dynamicDomain, ...打乱数组(staticBackup)];
+		return asArray ? queue : queue.join(',');
+	}
+
+	const colo = (request?.cf?.colo || 'sjc').toLowerCase();
+	const defaultDomain = `${colo}.${特征码字典[0].toLowerCase()}.${特征码字典[1]}ssss.net`;
+	return asArray ? [defaultDomain] : defaultDomain;
+}
+
+export { 美区高可用备用热池, 打乱数组, 获取出口反代候选队列 };
 ///////////////////////////////////////////////////////主程序入口///////////////////////////////////////////////
 export default {
 	async fetch(request, env, ctx) {
@@ -48,8 +90,8 @@ export default {
 		反代并发拨号数 = Math.max(1, Number(env.PROXY_CONCURRENT_DIAL) || 反代并发拨号数);
 		TCP并发拨号数 = Math.max(1, Number(env.TCP_CONCURRENT_DIAL) || TCP并发拨号数);
 		if (!env.TCP_CONCURRENT_DIAL && TCP并发拨号数 !== 1 && 识别运营商(request) === 'cmcc') TCP并发拨号数 = 1;
-		let 默认反代IP = (`${request.cf?.colo || 'sjc'}.${特征码字典[0]}.${特征码字典[1]}SsSs.nEt`).toLowerCase(), 默认反代兜底 = true;
-		if (env.PROXYIP) {
+		let 默认反代IP = 获取出口反代候选队列(request, env, null, config_JSON), 默认反代兜底 = true;
+		if (env.PROXYIP && env.PROXYIP !== 'auto') {
 			const proxyIPs = await 整理成数组(env.PROXYIP);
 			默认反代IP = proxyIPs[Math.floor(Math.random() * proxyIPs.length)];
 			默认反代兜底 = false;
