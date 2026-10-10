@@ -29,13 +29,18 @@ function 获取出口反代候选队列(request, env, ctx反代IP, config_JSON) 
         return [ctx反代IP];
     }
     const cfg反代 = config_JSON?.反代 || {};
-    const isAuto = (cfg反代.PROXYIP === 'auto' || !cfg反代.PROXYIP) && (env.PROXYIP === 'auto' || !env.PROXYIP);
-    const country = (cfg反代.PROXYIP_COUNTRY || env.PROXYIP_COUNTRY || 'US').toUpperCase();
+    const isAuto = (cfg反代.PROXYIP === 'auto' || !cfg反代.PROXYIP) && (env?.PROXYIP === 'auto' || !env?.PROXYIP);
+    const country = (cfg反代.PROXYIP_COUNTRY || env?.PROXYIP_COUNTRY || 'US').toUpperCase();
 
     if (isAuto && country !== 'AUTO') {
         const dynamicDomain = `${country.toLowerCase()}.proxyip.cmliussss.net`;
         const staticBackup = country === 'US' ? 美区高可用备用热池 : 美区高可用备用热池;
         return [dynamicDomain, ...打乱数组(staticBackup)];
+    }
+
+    const fixedIP = (cfg反代.PROXYIP && cfg反代.PROXYIP !== 'auto') ? cfg反代.PROXYIP : (env?.PROXYIP && env?.PROXYIP !== 'auto' ? env.PROXYIP : null);
+    if (fixedIP) {
+        return Array.isArray(fixedIP) ? fixedIP : String(fixedIP).split(',').map(s => s.trim()).filter(Boolean);
     }
 
     const colo = (request?.cf?.colo || 'sjc').toLowerCase();
@@ -55,6 +60,10 @@ assert.ok(res2.includes('192.9.157.76:443'));
 // Case 3: 自动获取 + 任意 (AUTO)
 const res3 = 获取出口反代候选队列({ cf: { colo: 'hkg' } }, {}, 'auto', { 反代: { PROXYIP: 'auto', PROXYIP_COUNTRY: 'auto' } });
 assert.strictEqual(res3[0], 'hkg.proxyip.cmliussss.net');
+
+// Case 4: 自定义固定 ProxyIP 模式时原样拆分用户填写的 IP 列表（ctx反代IP 为 null）
+const res4 = 获取出口反代候选队列({}, { PROXYIP: '1.2.3.4:443, 5.6.7.8:443' }, null, {});
+assert.deepStrictEqual(res4, ['1.2.3.4:443', '5.6.7.8:443']);
 
 // -----------------------------------------------------------------------------
 // 2. 深入验证 _worker.js 导出模块真实运行逻辑
@@ -105,9 +114,25 @@ const parsedQueue = strQueue.split(',');
 assert.strictEqual(parsedQueue[0], 'us.proxyip.cmliussss.net');
 assert.strictEqual(parsedQueue.length, 9);
 
-// 场景 6: 自定义固定 ProxyIP 模式时原样返回
+// 场景 6: 真实测试固定 ProxyIP 模式（ctx反代IP 为空或 'auto'，未短路，真实覆盖 env.PROXYIP 与 cfg.反代.PROXYIP）
 const fixedIp = '104.21.5.10:443';
-const fixedQueue = worker获取出口反代候选队列({}, { PROXYIP: fixedIp }, fixedIp, null, false);
-assert.strictEqual(fixedQueue, fixedIp);
+const fixedIpList = '104.21.5.10:443, 172.67.180.20:443';
+
+// 6.1 env.PROXYIP 固定单 IP（ctx反代IP 为 null）
+const fixedEnvQueue = worker获取出口反代候选队列({}, { PROXYIP: fixedIp }, null, null, false);
+assert.strictEqual(fixedEnvQueue, fixedIp, '当 env.PROXYIP 为固定 IP 时必须原样返回该固定 IP');
+
+// 6.2 env.PROXYIP 固定多 IP 列表（ctx反代IP 为 'auto'，asArray = true）
+const fixedEnvListQueue = worker获取出口反代候选队列({}, { PROXYIP: fixedIpList }, 'auto', null, true);
+assert.deepStrictEqual(fixedEnvListQueue, ['104.21.5.10:443', '172.67.180.20:443'], '固定 IP 列表必须被正确拆分并保留');
+
+// 6.3 cfg.反代.PROXYIP 固定单 IP（优先级高于 env.PROXYIP，ctx反代IP 为 null）
+const cfgFixedIp = '198.41.200.1:443';
+const fixedCfgQueue = worker获取出口反代候选队列({}, { PROXYIP: fixedIp }, null, { 反代: { PROXYIP: cfgFixedIp } }, false);
+assert.strictEqual(fixedCfgQueue, cfgFixedIp, 'cfg.反代.PROXYIP 必须优先于 env.PROXYIP 且不穿透为机房域名');
+
+// 6.4 cfg.反代.PROXYIP 固定多 IP 列表（ctx反代IP 为 'auto'，asArray = true）
+const fixedCfgListQueue = worker获取出口反代候选队列({}, {}, 'auto', { 反代: { PROXYIP: fixedIpList } }, true);
+assert.deepStrictEqual(fixedCfgListQueue, ['104.21.5.10:443', '172.67.180.20:443'], '配置项固定 IP 列表必须被正确拆分');
 
 console.log('✅ 所有出口路由测试用例通过！');

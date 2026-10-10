@@ -51,6 +51,12 @@ function 获取出口反代候选队列(request, env, ctx反代IP, cfg = null, a
 		return asArray ? queue : queue.join(',');
 	}
 
+	const fixedIP = (cfg反代.PROXYIP && cfg反代.PROXYIP !== 'auto') ? cfg反代.PROXYIP : (env?.PROXYIP && env?.PROXYIP !== 'auto' ? env.PROXYIP : null);
+	if (fixedIP) {
+		const fixedList = Array.isArray(fixedIP) ? fixedIP : String(fixedIP).split(',').map(s => s.trim()).filter(Boolean);
+		return asArray ? fixedList : fixedList.join(',');
+	}
+
 	const colo = (request?.cf?.colo || 'sjc').toLowerCase();
 	const defaultDomain = `${colo}.${特征码字典[0].toLowerCase()}.${特征码字典[1]}ssss.net`;
 	return asArray ? [defaultDomain] : defaultDomain;
