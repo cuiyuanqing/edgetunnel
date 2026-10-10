@@ -97,12 +97,12 @@ assert.strictEqual(res3[0], 'hkg.proxyip.cmliussss.net');
 console.log('✅ 所有出口路由测试用例通过！');
 ```
 
-- [ ] **Step 2: 运行测试验证失败/环境准备**
+- [x] **Step 2: 运行测试验证失败/环境准备**
 
 运行：`node tests/test_proxyip_routing.mjs`
 预期：执行成功输出 `✅ 所有出口路由测试用例通过！`
 
-- [ ] **Step 3: 在 `_worker.js` 中实现国家出口池与静态热备**
+- [x] **Step 3: 在 `_worker.js` 中实现国家出口池与静态热备**
 
 在 `_worker.js` 的全局常量区（约第 15 行）增加热备池声明，并实现 `获取出口反代候选队列` 函数：
 ```javascript
@@ -155,12 +155,12 @@ if (env.PROXYIP && env.PROXYIP !== 'auto') {
 };
 ```
 
-- [ ] **Step 4: 运行语法与逻辑校验**
+- [x] **Step 4: 运行语法与逻辑校验**
 
 运行：`node -c _worker.js`
 预期：语法校验退出码 0，无报错。
 
-- [ ] **Step 5: 提交更改**
+- [x] **Step 5: 提交更改**
 
 ```bash
 git add _worker.js tests/test_proxyip_routing.mjs
@@ -179,7 +179,7 @@ git commit -m "feat: 增加国家出口池智能路由算法与美区高可用 I
 - Consumes: `connectProxyIP(address, port, data, 所有反代数组, 启用反代失败兜底)`
 - Produces: 带有 `1000ms` 单点握手超时保护的 `打开TCP连接`，遇到死节点或超时自动秒级顺延至下一个候选节点。
 
-- [ ] **Step 1: 编写超时熔断模拟测试 `tests/test_dial_timeout.mjs`**
+- [x] **Step 1: 编写超时熔断模拟测试 `tests/test_dial_timeout.mjs`**
 
 验证当单次拨号超时或拒绝时，`connectProxyIP` 能够继续尝试列表中的后续 IP 并返回可用连接。
 
@@ -220,12 +220,12 @@ async function run() {
 run();
 ```
 
-- [ ] **Step 2: 运行测试验证**
+- [x] **Step 2: 运行测试验证**
 
 运行：`node tests/test_dial_timeout.mjs`
 预期：输出 `✅ 超时顺延重试测试通过！`
 
-- [ ] **Step 3: 在 `_worker.js` 中给 `打开TCP连接` 增加 1000ms 快速超时控制**
+- [x] **Step 3: 在 `_worker.js` 中给 `打开TCP连接` 增加 1000ms 快速超时控制**
 
 检查 `_worker.js` 中的 `打开TCP连接(address, port)`（约 2352 行），增加 `Promise.race` 超时控制，防止卡在无响应的反代节点：
 ```javascript
@@ -252,12 +252,12 @@ run();
 	log(`[反代连接] 节点 ${候选.hostname}:${候选.port} 异常(${err.message || err})，顺延尝试后续候选节点...`);
 ```
 
-- [ ] **Step 4: 语法校验与兼容性测试**
+- [x] **Step 4: 语法校验与兼容性测试**
 
 运行：`node -c _worker.js`
 预期：退出码 0。
 
-- [ ] **Step 5: 提交更改**
+- [x] **Step 5: 提交更改**
 
 ```bash
 git add _worker.js tests/test_dial_timeout.mjs
@@ -276,7 +276,7 @@ git commit -m "feat: 为 ProxyIP TCP 连接建立增加 1000ms 快速熔断与�
 - Consumes: 原始 `Pages静态页面/admin/` 返回的 HTML 字符串
 - Produces: 包含 `#proxyCountryWrapper`、`#proxyCountrySelect` 及相关 JS 事件联动的增强 HTML 字符串。
 
-- [ ] **Step 1: 编写 HTML 转换与注入单元测试 `tests/test_admin_html_injection.mjs`**
+- [x] **Step 1: 编写 HTML 转换与注入单元测试 `tests/test_admin_html_injection.mjs`**
 
 ```javascript
 // tests/test_admin_html_injection.mjs
@@ -336,12 +336,12 @@ assert.ok(result.includes('🇺🇸 美国 (US)'), '必须包含美区默认选�
 console.log('✅ 管理后台 HTML 注入测试通过！');
 ```
 
-- [ ] **Step 2: 运行测试验证**
+- [x] **Step 2: 运行测试验证**
 
 运行：`node tests/test_admin_html_injection.mjs`
 预期：输出 `✅ 管理后台 HTML 注入测试通过！`
 
-- [ ] **Step 3: 修改 `_worker.js` 中的 `增强管理后台HTML`**
+- [x] **Step 3: 修改 `_worker.js` 中的 `增强管理后台HTML`**
 
 在 `_worker.js` 中的 `增强管理后台HTML(html)` 函数中：
 1. 注入 `#proxyCountryWrapper` 下拉控件至 `#autoProxy` 的 `<label>` 之后；
@@ -351,12 +351,12 @@ console.log('✅ 管理后台 HTML 注入测试通过！');
    - 页面加载配置时，回显 `currentConfig.反代.PROXYIP_COUNTRY || 'US'`；
    - 点击保存时，自动将选中的国家赋值到 `currentConfig.反代.PROXYIP_COUNTRY`。
 
-- [ ] **Step 4: 运行真实远端 HTML 注入测试**
+- [x] **Step 4: 运行真实远端 HTML 注入测试**
 
 运行：`node -e "fetch('https://edt-pages.github.io/admin/').then(r=>r.text()).then(t=>{ const r = require('./_worker.js'); /* 语法检查与注入匹配 */ })"` 或使用单元脚本加载真实 HTML 检查。
 预期：DOM 匹配成功且注入后的 HTML 结构合法。
 
-- [ ] **Step 5: 提交更改**
+- [x] **Step 5: 提交更改**
 
 ```bash
 git add _worker.js tests/test_admin_html_injection.mjs
@@ -375,7 +375,7 @@ git commit -m "feat: 在管理后台动态注入落地国家下拉选择器与�
 - Consumes: `默认配置JSON.反代`, `读取config_JSON`
 - Produces: 具有完整 `PROXYIP_COUNTRY` 默认值与向下兼容的 `config_JSON` 结构。
 
-- [ ] **Step 1: 编写配置解析与向下兼容测试 `tests/test_config_kv.mjs`**
+- [x] **Step 1: 编写配置解析与向下兼容测试 `tests/test_config_kv.mjs`**
 
 验证在读取存量老旧 `config.json`（不包含 `PROXYIP_COUNTRY` 字段）时，自动补充默认值 `'US'`，并在保存时不被覆盖。
 
@@ -403,12 +403,12 @@ assert.strictEqual(updatedCustom.反代.PROXYIP_COUNTRY, 'JP');
 console.log('✅ KV 配置兼容与默认值补全测试通过！');
 ```
 
-- [ ] **Step 2: 运行测试验证**
+- [x] **Step 2: 运行测试验证**
 
 运行：`node tests/test_config_kv.mjs`
 预期：输出 `✅ KV 配置兼容与默认值补全测试通过！`
 
-- [ ] **Step 3: 修改 `_worker.js` 中的 `默认配置JSON` 和 `读取config_JSON`**
+- [x] **Step 3: 修改 `_worker.js` 中的 `默认配置JSON` 和 `读取config_JSON`**
 
 1. 在 `默认配置JSON.反代` 中增加：
    ```javascript
@@ -419,12 +419,12 @@ console.log('✅ KV 配置兼容与默认值补全测试通过！');
    if (!config_JSON.反代.PROXYIP_COUNTRY) config_JSON.反代.PROXYIP_COUNTRY = "US";
    ```
 
-- [ ] **Step 4: 运行语法检查**
+- [x] **Step 4: 运行语法检查**
 
 运行：`node -c _worker.js`
 预期：退出码 0。
 
-- [ ] **Step 5: 提交更改**
+- [x] **Step 5: 提交更改**
 
 ```bash
 git add _worker.js tests/test_config_kv.mjs
@@ -438,7 +438,7 @@ git commit -m "feat: 在默认配置与读取流程中增加 PROXYIP_COUNTRY 兼
 **Files:**
 - Create: `D:\nice_wall\edgetunnel\tests\test_e2e_mock.mjs`
 
-- [ ] **Step 1: 编写端到端 Mock 模拟测试**
+- [x] **Step 1: 编写端到端 Mock 模拟测试**
 
 模拟完整的请求生命周期：
 1. 请求 `/admin` -> 验证返回的 HTML 包含 `#proxyCountrySelect` 及联动脚本；
@@ -446,12 +446,12 @@ git commit -m "feat: 在默认配置与读取流程中增加 PROXYIP_COUNTRY 兼
 3. GET `/admin/config.json` -> 验证能取回 `PROXYIP_COUNTRY: 'US'`；
 4. WebSocket 拨号进入 -> 验证 `获取出口反代候选队列` 解析到 `us.proxyip.cmliussss.net` 及 8 个美区 IPv4 节点。
 
-- [ ] **Step 2: 执行回归测试**
+- [x] **Step 2: 执行回归测试**
 
 运行：`node tests/test_e2e_mock.mjs`
 预期：全流程断言通过。
 
-- [ ] **Step 3: 提交回归测试脚本**
+- [x] **Step 3: 提交回归测试脚本**
 
 ```bash
 git add tests/test_e2e_mock.mjs
@@ -465,7 +465,7 @@ git commit -m "test: 增加 EdgeTunnel 国家出口选择与自愈队列完整�
 **Files:**
 - Router verification script: `C:\Users\Administrator\.gemini\antigravity-cli\brain\75f7a8ab-c41a-4564-bdcf-7b4ac1ec3989\scratch\verify_shadow_e2e.py`
 
-- [ ] **Step 1: 协助用户完成 Wrangler 部署**
+- [x] **Step 1: 协助用户完成 Wrangler 部署**
 
 提示用户在当前终端执行 `npx wrangler login` 完成浏览器 OAuth 授权（若尚未授权），随后执行：
 ```bash
@@ -473,7 +473,7 @@ npx wrangler deploy
 ```
 确认部署输出成功版本号与部署时间戳。
 
-- [ ] **Step 2: 软路由影子端口 (17890) 全链路拨号实测**
+- [x] **Step 2: 软路由影子端口 (17890) 全链路拨号实测**
 
 通过 `ssh` MCP 工具连接软路由 `10.10.18.2`：
 1. 使用端口 `17890`（带 GID 65534 隔离进程）向软路由启动的 Clash 发起针对目标节点的代理请求；
@@ -485,6 +485,6 @@ npx wrangler deploy
    - `curl -x 127.0.0.1:17890 https://browserleaks.com/dns` -> 验证 HTTP 200；
 3. 确保用户的生产代理（OpenClash 7890 / `ddyun`）完全不受干扰。
 
-- [ ] **Step 3: 记录测试结果与版本归档**
+- [x] **Step 3: 记录测试结果与版本归档**
 
 在 `docs/superpowers/plans/2026-10-10-country-proxyip-autohealing.md` 中打钩标记完成，并将变更推送到远程 `my-custom` 分支。
