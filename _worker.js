@@ -62,7 +62,25 @@ function 获取出口反代候选队列(request, env, ctx反代IP, cfg = null, a
 	return asArray ? [defaultDomain] : defaultDomain;
 }
 
-export { 美区高可用备用热池, 打乱数组, 获取出口反代候选队列 };
+async function 带超时打开TCP连接(TCP连接, address, port, 超时毫秒 = 1000) {
+	const remoteSock = TCP连接({ hostname: address, port });
+	let timer = null;
+	const 超时任务 = new Promise((_, reject) => {
+		timer = setTimeout(() => reject(new Error(`连接 ${address}:${port} 握手超时(${超时毫秒}ms)`)), 超时毫秒);
+	});
+	try {
+		const 等待连接 = remoteSock?.opened ? remoteSock.opened : Promise.resolve();
+		await Promise.race([等待连接, 超时任务]);
+		clearTimeout(timer);
+		return remoteSock;
+	} catch (err) {
+		clearTimeout(timer);
+		try { remoteSock?.close?.() } catch (e) { }
+		throw err;
+	}
+}
+
+export { 美区高可用备用热池, 打乱数组, 获取出口反代候选队列, 带超时打开TCP连接 };
 ///////////////////////////////////////////////////////主程序入口///////////////////////////////////////////////
 export default {
 	async fetch(request, env, ctx) {
@@ -2390,19 +2408,24 @@ async function forwardataTCP(host, portNum, rawData, ws, respHeader, remoteConnW
 		return true;
 	};
 
-	async function 等待连接建立(remoteSock, timeoutMs = 连接超时毫秒) {
-		await Promise.race([
-			remoteSock.opened,
-			new Promise((_, reject) => setTimeout(() => reject(new Error('连接超时')), timeoutMs))
-		]);
+	async function 等待连接建立(remoteSock) {
+		if (remoteSock?.opened) {
+			await remoteSock.opened;
+		}
 	}
 
-	async function 打开TCP连接(address, port) {
+	async function 打开TCP连接(address, port, 超时毫秒 = 1000) {
 		const remoteSock = TCP连接({ hostname: address, port });
+		let timer = null;
+		const 超时任务 = new Promise((_, reject) => {
+			timer = setTimeout(() => reject(new Error(`连接 ${address}:${port} 握手超时(${超时毫秒}ms)`)), 超时毫秒);
+		});
 		try {
-			await 等待连接建立(remoteSock);
+			await Promise.race([等待连接建立(remoteSock), 超时任务]);
+			clearTimeout(timer);
 			return remoteSock;
 		} catch (err) {
+			clearTimeout(timer);
 			try { remoteSock?.close?.() } catch (e) { }
 			throw err;
 		}
@@ -2514,6 +2537,11 @@ async function forwardataTCP(host, portNum, rawData, ws, respHeader, remoteConnW
 					return socket;
 				} catch (err) {
 					try { socket?.close?.() } catch (e) { }
+					for (let k = 0; k < 候选列表.length; k++) {
+						const 候选 = 候选列表[k];
+						const 候选错误 = (err && Array.isArray(err.errors) && err.errors[k]) ? err.errors[k] : err;
+						log(`[反代连接] 节点 ${候选.hostname}:${候选.port} 异常(${候选错误.message || 候选错误})，顺延尝试后续候选节点...`);
+					}
 					log(`[反代连接] 本批连接失败: ${err.message || err}`);
 				}
 			}
